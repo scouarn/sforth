@@ -106,6 +106,447 @@ DEFINE_WORD \label, \name, \flags
 
         .section .dictionary, "awx", @progbits
 
+## Stack manipulation
+
+DEFINE_WORD DROP, "DROP"        # ( x -- )
+        leaq    8(%rbp), %rbp
+        ret
+
+
+DEFINE_WORD DUP, "DUP"          # ( x -- x x )
+        movq    (%rbp), %rax
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD SWAP, "SWAP"        # ( x1 x2 -- x2 x1 )
+        movq    8(%rbp), %rax   # x1
+        movq    0(%rbp), %rbx   # x2
+        movq    %rbx, 8(%rbp)   # x2
+        movq    %rax, 0(%rbp)   # x1
+        ret
+
+
+DEFINE_WORD OVER, "OVER"        # ( x1 x2 -- x1 x2 x1 )
+        movq    8(%rbp), %rax
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD ROT, "ROT"          # ( x1 x2 x3 -- x2 x3 x1 )
+        movq    16(%rbp), %rax  # x1
+        movq     8(%rbp), %rbx  # x2
+        movq     0(%rbp), %rcx  # x3
+        movq    %rbx, 16(%rbp)  # x2
+        movq    %rcx,  8(%rbp)  # x3
+        movq    %rax,  0(%rbp)  # x1
+        ret
+
+
+DEFINE_WORD MinusROT, "-ROT"    # ( x1 x2 x3 -- x3 x1 x2 )
+        movq    16(%rbp), %rax  # x1
+        movq     8(%rbp), %rbx  # x2
+        movq     0(%rbp), %rcx  # x3
+        movq    %rcx, 16(%rbp)  # x3
+        movq    %rax,  8(%rbp)  # x1
+        movq    %rbx,  0(%rbp)  # x2
+        ret
+
+
+DEFINE_WORD TwoDROP, "2DROP"    # ( x1 x2 -- )
+        leaq    16(%rbp), %rbp
+        ret
+
+
+DEFINE_WORD TwoDUP, "2DUP"      # ( x1 x2 -- x1 x2 x1 x2 )
+        movq    8(%rbp), %rax   # x1
+        movq    0(%rbp), %rbx   # x2
+        DPUSH   %rax
+        DPUSH   %rbx
+        ret
+
+
+DEFINE_WORD TwoSWAP, "2SWAP"    # ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
+        movq    16(%rbp), %rax  # x1
+        movq    12(%rbp), %rbx  # x2
+        movq     8(%rbp), %rcx  # x3
+        movq     0(%rbp), %rdx  # x4
+        movq    %rcx, 16(%rbp)  # x3
+        movq    %rdx, 12(%rbp)  # x4
+        movq    %rax,  8(%rbp)  # x1
+        movq    %rbx,  0(%rbp)  # x2
+        ret
+
+
+DEFINE_WORD QuesDUP, "?DUP"     # ( x -- 0 | x x )
+        movq    (%rbp), %rax    # x
+        test    %rax, %rax
+        jz      .Lquesdup
+        DPUSH   %rax
+.Lquesdup:
+        ret
+
+
+DEFINE_WORD SupR, ">R"          # ( x -- ) ( R: -- x )
+        popq    %rax            # Return addr
+        DPOP    %rbx            # x
+        pushq   %rbx
+        jmp    *%rax            # Ret
+
+
+DEFINE_WORD RSup, "R>"          # ( -- x ) ( R: x -- )
+        popq    %rax            # Return addr
+        popq    %rbx            # x
+        DPUSH   %rbx
+        jmp    *%rax            # Ret
+
+
+DEFINE_WORD RAt, "R@"           # ( -- x ) ( R: x -- x )
+        movq    8(%rsp), %rax   # x
+        DPUSH   %rax
+        ret
+
+
+## Memory
+
+DEFINE_WORD At, "@"             # ( addr -- x )
+        DPOP    %rax
+        movq    (%rax), %rax
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD Bang, "!"           # ( x addr -- )
+        DPOP    %rax            # addr
+        DPOP    %rbx            # x
+        movq    %rbx, (%rax)
+        ret
+
+
+DEFINE_WORD PlusBang, "+!"      # ( x addr -- )
+        DPOP    %rax            # addr
+        DPOP    %rbx            # x
+        addq    %rbx, (%rax)
+        ret
+
+
+DEFINE_WORD MinusBang, "-!"     # ( x addr -- )
+        DPOP    %rax            # addr
+        DPOP    %rbx            # x
+        subq    %rbx, (%rax)
+        ret
+
+
+DEFINE_WORD CELLPlus, "CELL+"   # ( c-addr1 -- c-addr2 )
+        addq    $8, (%rbp)
+        ret
+
+
+DEFINE_WORD CELLS, "CELLS"      # ( c-addr1 -- c-addr2 )
+        shlq    $3, (%rbp)
+        ret
+
+
+DEFINE_WORD CAt, "C@"           # ( c-addr -- c )
+        DPOP    %rax            # c-addr
+        movzxb  (%rax), %rax    # c
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD CBang, "C!"         # ( char c-addr -- )
+        DPOP    %rax            # c-addr
+        DPOP    %rbx            # char
+        movb    %bl, (%rax)
+        ret
+
+
+DEFINE_WORD CHARS, "CHARS"      # ( c-addr1 -- c-addr2 )
+        ret                     # NOP
+
+
+DEFINE_WORD CHARPlus, "CHAR+"   # ( c-addr1 -- c-addr2 )
+        incq    (%rbp)
+        ret
+
+
+## Arithmetic
+
+DEFINE_WORD Plus, "+"           # ( n1 | u1 n2 | u2 -- n3 | u3 )
+        DPOP    %rax
+        addq    %rax, (%rbp)
+        ret
+
+
+DEFINE_WORD Minus, "-"          # ( n1 | u1 n2 | u2 -- n3 | u3 )
+        DPOP    %rax
+        subq    %rax, (%rbp)
+        ret
+
+
+DEFINE_WORD NEGATE, "NEGATE"    # ( n1 -- n2 )
+        negq    (%rbp)
+        ret
+
+
+DEFINE_WORD OnePlus, "1+"       # ( n1 | u1 -- n2 | u2 )
+        incq    (%rbp)
+        ret
+
+
+DEFINE_WORD OneMinus, "1-"      # ( n1 | u1 -- n2 | u2 )
+        decq    (%rbp)
+        ret
+
+
+DEFINE_WORD Star, "*"           # ( n1 n2 -- n3 )
+        DPOP    %rcx            # n2
+        DPOP    %rax            # n1
+        xorq    %rdx, %rdx
+        imul    %rcx
+        DPUSH   %rax            # n3
+        ret
+
+
+DEFINE_WORD MStar, "M*"         # ( n1 n2 -- d )
+        DPOP    %rcx            # n2
+        DPOP    %rax            # n1
+        xorq    %rdx, %rdx
+        imul    %rcx
+        DPUSH   %rax            # d_lo
+        DPUSH   %rdx            # d_hi
+        ret
+
+
+DEFINE_WORD SlashMOD, "/MOD"    # ( n1 n2 -- rem quot )
+        DPOP    %rcx            # n1
+        DPOP    %rax            # n2
+        xorq    %rdx, %rdx
+        idiv    %rcx            # %rax := quotient, %rdx := rem
+        DPUSH   %rdx            # rem
+        DPUSH   %rax            # quot
+        ret
+
+
+DEFINE_WORD ABS, "ABS"          # ( n -- u )
+        # https://stackoverflow.com/questions/2639173/x86-assembly-abs-implementation
+        # u = ( n ^ s ) - s     Where s = ( n > 0 ) = n >> 63
+        DPOP    %rax            # n
+        movq    %rax, %rbx
+        sarq    $63,  %rbx      # s
+        xorq    %rbx, %rax      # n ^ s
+        subq    %rbx, %rax      # (n^s) - s
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD MAX, "MAX", # ( n1 n2 -- n3 )
+        DPOP    %rax            # n2
+        DPOP    %rbx            # n1
+        cmpq    %rbx, %rax
+        jg      .Lmax_end
+        movq    %rbx, %rax
+.Lmax_end:
+        DPUSH   %rax            # n3
+        ret
+
+
+# Logical
+
+DEFINE_WORD INVERT, "INVERT"    # ( x1 -- x2 )
+        notq    (%rbp)
+        ret
+
+
+DEFINE_WORD AND, "AND"          # ( x1 x2 -- x3 )
+        DPOP    %rax            # x2
+        andq    %rax, (%rbp)
+        ret
+
+
+DEFINE_WORD OR, "OR"            # ( x1 x2 -- x3 )
+        DPOP    %rax            # x2
+        orq     %rax, (%rbp)
+        ret
+
+
+DEFINE_WORD XOR, "XOR"          # ( x1 x2 -- x3 )
+        DPOP    %rax            # x2
+        xorq    %rax, (%rbp)
+        ret
+
+
+# Comparisons
+
+DEFINE_WORD ZeroEq, "0="        # ( n | u -- flag )
+        DPOP    %rax            # n
+        test    %rax, %rax
+        setnz   %al             # if      0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if not 0  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD ZeroInfSup, "0<>"   # ( n | u -- flag )
+        DPOP    %rax            # n
+        test    %rax, %rax
+        setz    %al             # if not 0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if     0  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD ZeroSup, "0>"       # ( n -- flag )
+        DPOP    %rax            # n
+        cmp     $0, %rax
+        setng   %al             # if <= 0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if >  0 then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD ZeroInf, "0<"       # ( n -- flag )
+        DPOP    %rax            # n
+        cmp     $0, %rax
+        setnl   %al             # if >= 0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if <  0 then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD ZeroInfEq, "0<="    # ( n -- flag )
+        DPOP    %rax            # n
+        cmp     $0, %rax
+        setnle  %al             # if >   0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if <=  0 then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD ZeroSupEq, "0>="       # ( n -- flag )
+        DPOP    %rax            # n
+        cmp     $0, %rax
+        setnge  %al             # if <  0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if >= 0 then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD Eq, "="             # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setne   %al             # if neq then 1 - 1 = 0  = FALSE
+        dec     %al             # if eq  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD InfSup, "<>"        # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        sete    %al             # if eq  then 1 - 1 = 0  = FALSE
+        dec     %al             # if neq then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD Inf, "<"            # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setnl   %al             # if >= then 1 - 1 = 0  = FALSE
+        dec     %al             # if <  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD Sup, ">"            # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setng   %al             # if <= then 1 - 1 = 0  = FALSE
+        dec     %al             # if >  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD InfEq, "<="         # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setnle  %al             # if >  then 1 - 1 = 0  = FALSE
+        dec     %al             # if <= then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD SupEq, ">="         # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setnge  %al             # if <  then 1 - 1 = 0  = FALSE
+        dec     %al             # if >= then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD UInf, "U<"          # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setnb   %al             # if >= then 1 - 1 = 0  = FALSE
+        dec     %al             # if <  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD USup, "U>"          # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setna   %al             # if <= then 1 - 1 = 0  = FALSE
+        dec     %al             # if >  then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD UInfEq, "U<="       # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setnbe  %al             # if >  then 1 - 1 = 0  = FALSE
+        dec     %al             # if <= then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD USupEq, "U>="       # ( n1 | u1  n2 | u2 -- flag )
+        DPOP    %rbx            # n2
+        DPOP    %rax            # n1
+        cmp     %rbx, %rax
+        setnae  %al             # if <  then 1 - 1 = 0  = FALSE
+        dec     %al             # if >= then 0 - 1 = -1 = TRUE
+        movsx   %al, %rax       # Sign extend
+        DPUSH   %rax
+        ret
+
 
 ## IO
 
