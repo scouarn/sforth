@@ -691,7 +691,7 @@ _LITERAL: # ( -- ) %rax : x
         movl    $0x0045c748, 4(%rdx)
         movl    %eax, 8(%rdx)
 
-        addq    $12, (%rbp)
+        addq    $12, curr_def
         ret
 
 
@@ -718,10 +718,17 @@ DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
         ret
 
 
-DEFINE_WORD RECURSE, "RECURSE", FLAG_IMM # ( -- )
+DEFINE_WORD HIDE, "HIDE", # ( -- )
         # Interpretation: toggle the visibility flag of the last definition
         movq    last_def, %rdi
         xorb    $FLAG_HIDDEN, 8(%rdi)
+        ret
+
+
+DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
+        # Toggle imm flag
+        movq    last_def, %rdi
+        xorb    $FLAG_IMM, 8(%rdi)
         ret
 
 
@@ -769,10 +776,10 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         cmpb    $0x03, %al      # ^C: Restart
         je      _REFILL
 
-        cmpq    $source_buf, %rdi # Ignore DEL on first col
-        je      .Lrefill_not_del
         cmpb    $0x7f, %al      # DEL
         jne     .Lrefill_not_del
+        cmpq    $source_buf, %rdi # Ignore DEL on first col
+        je      .Lrefill_loop
         dec     %rdi
         push    %rdi
         DPUSH   $'\b'
@@ -858,16 +865,11 @@ DEFINE_WORD WORD, "WORD"        # ( char "<chars>ccc<char>" -- c-addr )
         DPOP    %rdx
         call    _WORD
         DPUSH   $word_cnt       # Addr of counted string
+        ret
 word_cnt: .byte 0
 word_buf:
         .skip WORD_SZ
         .byte 0
-
-
-DEFINE_WORD Back, "\\", FLAG_IMM # ( -- )
-        movb   $'\n', %dl
-        call    _WORD
-        ret
 
 
 _NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag

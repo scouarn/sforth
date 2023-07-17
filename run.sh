@@ -1,4 +1,4 @@
 #!/bin/bash
 stty raw -echo
-cat sforth.fs - | ./sforth
+cat ./sforth.fs - | ./sforth
 stty cooked echo
