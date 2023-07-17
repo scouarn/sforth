@@ -196,11 +196,21 @@ _COMPILE: # ( -- ) %rax : xt
 DEFINE_WORD LITERAL, "LITERAL", FLAG_IMM # ( x -- )
         DPOP    %rax
 _LITERAL: # ( -- ) %rax : x
+        movq    curr_def, %rdx
+
         # Compile: leaq -8(%rbp), %rbp
+        # 48 8d 6d f8
+        movl    $0xf86d8d48, (%rdx)
+
+        # FIXME: doesn't work for words that don't fit on 32bits
 
         # Compile: movq $IMM, (%rbp)
-        # Where IMM is what's in %rax
+        # Where IMM is what's in %eax, sign extended
+        # 48 c7 45 00 xx xx xx xx
+        movl    $0x0045c748, 4(%rdx)
+        movl    %eax, 8(%rdx)
 
+        addq    $12, (%rbp)
         ret
 
 
