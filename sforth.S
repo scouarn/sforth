@@ -1,4 +1,5 @@
 ### Scouarn Forth
+# Bootstrap system
 
 ## Refs :
 # - https://compilercrim.es/bootstrap/miniforth/#parsing
@@ -66,7 +67,7 @@ rstack_init:    .quad
         .globl _start
 _start:
         cld
-        movq %rsp, rstack_init
+        movq %rsp, rstack_init          # Return stack
         movq $dstack_init, %rbp         # Data stack pointer
         jmp  xt_QUIT                    # No return
 
@@ -110,9 +111,17 @@ DEFINE_WORD \label, \name, \flags
 
 DEFINE_WORD EMIT, "EMIT"        # ( char -- )
         movq    $SYS_WRITE, %rax
-        movq    $STDOUT, %rdi
+        movq    $STDOUT,    %rdi
+        movq    %rbp,       %rsi
+        movq    $1,         %rdx
         syscall
         addq    $8, %rbp        # Drop
+        ret
+
+
+DEFINE_WORD CR, "CR"            # ( -- )
+        DPUSH   $'\n'
+        call    xt_EMIT
         ret
 
 
@@ -186,7 +195,7 @@ word_buf:
         .byte 0
 
 
-_NUMBER: # ( -- ) Parse word_buf, %rax := n|u, %rbx := flag
+_NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
         xorq    %rsi, %rsi      # Index in word_buf
         xorq    %rax, %rax      # Result
         movq    $0, %rbx        # FALSE (failure)
@@ -239,6 +248,11 @@ DEFINE_WORD QUIT, "QUIT"
         .equ QUIT_MSG_SZ, (.-.Lquit_msg)
 
 
+DEFINE_WORD ABORT, "ABORT"
+        movq    $dstack_init, %rbp      # Empty data stack
+        jmp     xt_QUIT                 # No return
+
+
 DEFINE_WORD STATE, "STATE"
         DPUSH   $state
         ret
@@ -255,19 +269,65 @@ DEFINE_WORD Rsq, "]"
         ret
 
 
+_FIND: # ( -- ) Find word in word_buf, %rbx := defptr, %rdi := xt, %dl := flags
+        movq    lastest, %rbx
+        jmp     .Lfind_begin
+
+.Lfind_loop:
+        movq    (%rbx), %rbx    # Next
+.Lfind_begin:
+        test    %rbx, %rbx
+        jz      .Lfind_not_found
+
+        movb    8(%rbx), %dl    # Flags
+
+        movzxb  9(%rbx), %rcx   # Length
+        cmpb    word_cnt, %cl
+        jne     .Lfind_loop     # Next word if the length doesn't match
+
+        leaq    10(%rbx), %rdi  # String compare
+        leaq    word_buf, %rsi
+        repe    cmpsb
+        jne     .Lfind_loop     # Next word if not equal
+
+        # Found ! After repe, %rdi contains the xt
+
+.Lfind_not_found:
+        ret
+
+
 DEFINE_WORD INTERPRET, "INTERPRET"
 .Linterpret_loop:
         call    _WORD
         cmpq    $0, word_cnt
-        jg      .Linterpret_not_empty
+        jg      .Linterpret_try_find
         ret
-.Linterpret_not_empty:
+
+.Linterpret_try_find:
+        call    _FIND
+        test    %rbx, %rbx
+        jz      .Linterpret_try_number
+
+.Linterpret_try_number:
         call    _NUMBER
+        test    %rbx, %rbx
+        jz      .Linterpret_not_found
+
+.Linterpret_not_found:
+nfound:
+        movq    $.Linterpret_msg, %rsi
+        movq    $.Linterpret_msg_sz, %rdx
+        call    _TYPE
         movq    $word_buf, %rsi
         movq    word_cnt,  %rdx
         call    _TYPE
-        jmp     .Linterpret_loop
+        call    xt_CR
+        jmp     xt_QUIT         # No return
         ret
+
+.Linterpret_msg:
+        .ascii  "**NOT FOUND** "
+        .equ .Linterpret_msg_sz, (.-.Linterpret_msg)
 
 
 lastest:   .quad _LAST_DEF
