@@ -831,32 +831,51 @@ DEFINE_WORD ABORT, "ABORT"
         jmp     xt_QUIT                 # No return
 
 
-_FIND: # ( -- ) Find word in word_buf, %rbx := defptr, %rdi := xt, %dl := flags
+_FIND: # ( -- ) %rax : counted str, %rbx := defptr, %rdi := xt, %dl := flags
         movq    last_def, %rbx
-        jmp     .Lfind_begin
+        jmp     .L_find_begin
 
-.Lfind_loop:
+.L_find_loop:
         movq    (%rbx), %rbx    # Next
-.Lfind_begin:
+.L_find_begin:
         test    %rbx, %rbx
-        jz      .Lfind_not_found
+        jz      .L_find_not_found
 
         movb    8(%rbx), %dl    # Flags
         test    $FLAG_HIDDEN, %dl
-        jnz     .Lfind_loop     # Hidden word
+        jnz     .L_find_loop     # Hidden word
 
         movzxb  9(%rbx), %rcx   # Length
-        cmpb    word_cnt, %cl
-        jne     .Lfind_loop     # Next word if the length doesn't match
+        cmpb    (%rax), %cl
+        jne     .L_find_loop     # Next word if the length doesn't match
 
-        leaq    10(%rbx), %rdi  # String compare
-        leaq    word_buf, %rsi
-        repe    cmpsb
-        jne     .Lfind_loop     # Next word if not equal
+        leaq    10(%rbx), %rdi
+        leaq     1(%rax), %rsi  # Chars of the counted string
+        repe    cmpsb           # String compare
+        jne     .L_find_loop     # Next word if not equal
 
         # Found ! After repe, %rdi contains the xt
 
-.Lfind_not_found:
+.L_find_not_found:
+        ret
+
+
+DEFINE_WORD FIND, "FIND"        # ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+        DPOP    %rax
+        call    _FIND
+        test    %rbx, %rbx
+        jnz     .Lfind_found
+        DPUSH   %rax
+        DPUSH   $0
+        ret
+
+.Lfind_found:
+        DPUSH   %rdi            # xt
+        testb   $FLAG_IMM, %dl
+        setnz   %rax            # 1 if imm, 0 else
+        shl     $1, %rax        # 2 if imm, 0 else
+        decq    %rax            # 1 if imm, -1 else
+        DPUSH   %rax
         ret
 
 
@@ -869,6 +888,7 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         ret
 
 .Linterpret_try_find:
+        movq    $word_cnt, %rax         # Counted string
         call    _FIND
         test    %rbx, %rbx
         jz      .Linterpret_try_number
