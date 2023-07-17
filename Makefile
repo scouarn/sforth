@@ -8,7 +8,7 @@ EXE = sforth
 all: $(EXE)
 
 run: $(EXE)
-	@./$(EXE); echo "**Exited with status $$?**"
+	@./run.sh
 
 db: $(EXE)
 	gdb $(EXE)

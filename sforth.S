@@ -41,9 +41,9 @@
 
 ## Data stack
         .bss
-dtack_end:
+dstack_end:
         .skip   DSTACK_SZ
-dstack_init:
+dstack_start:
 
 .macro DPUSH src
         leaq    -8(%rbp), %rbp
@@ -58,7 +58,7 @@ dstack_init:
 
 ## Return stack
         .bss
-rstack_init:    .quad
+rstack_init:    .quad 0
 
 
 ## Entrypoint
@@ -67,9 +67,9 @@ rstack_init:    .quad
         .globl _start
 _start:
         cld
-        movq %rsp, rstack_init          # Return stack
-        movq $dstack_init, %rbp         # Data stack pointer
-        jmp  xt_QUIT                    # No return
+        movq    %rsp, rstack_init          # Return stack
+        movq    $dstack_start, %rbp        # Data stack pointer
+        jmp     xt_QUIT                    # No return
 
 
 ## Dictionary
@@ -561,6 +561,8 @@ DEFINE_WORD EMIT, "EMIT"        # ( char -- )
 
 
 DEFINE_WORD CR, "CR"            # ( -- )
+        DPUSH   $'\r'
+        call    xt_EMIT
         DPUSH   $'\n'
         call    xt_EMIT
         ret
@@ -572,6 +574,16 @@ DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
 _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
         movq    $SYS_WRITE, %rax
         movq    $STDOUT, %rdi
+        syscall
+        ret
+
+
+DEFINE_WORD KEY, "KEY"          # ( -- char )
+        DPUSH   $0 # Alloc
+        movq    $SYS_READ, %rax
+        movq    $STDIN,    %rdi
+        movq    %rbp,      %rsi
+        movq    $1,        %rdx
         syscall
         ret
 
@@ -713,7 +725,7 @@ DEFINE_WORD RECURSE, "RECURSE", FLAG_IMM # ( -- )
         ret
 
 
-## Parser
+## Parsing
 
 DEFINE_WORD SupIN, ">IN"
         DPUSH   $source_idx
@@ -721,28 +733,89 @@ DEFINE_WORD SupIN, ">IN"
 source_idx: .quad 0
 
 
-DEFINE_WORD HashIN, "#IN"
-        DPUSH   $source_cnt
-        ret
-source_cnt: .quad 0
-
-
-DEFINE_WORD TIB, "TIB"
+DEFINE_WORD SOURCE, "SOURCE" # ( -- c-addr u )
         DPUSH   $source_buf
+        movq    source_cnt, %rax
+        DPUSH   %rax
         ret
+source_cnt: .quad 0 # Size of the current line
 source_buf:
         .skip SOURCE_SZ
         .byte 0
 
 
-_REFILL: # ( -- ) Update source_buf, source_idx and source_cnt
-        movq    $SYS_READ,    %rax
-        movq    $STDIN,       %rdi
-        movq    $source_buf,  %rsi
-        movq    $SOURCE_SZ,   %rdx
-        syscall
-        movq    $0,   source_idx
-        movq    %rax, source_cnt
+_REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
+        # %rbx := Number of non special chars read (one newline -> 1)
+        DPUSH   $'>'            # Prompt
+        call    xt_EMIT
+        DPUSH   $' '
+        call    xt_EMIT
+
+        xorq    %rbx, %rbx      # Total number of chars read
+        movq    $source_buf, %rdi
+
+.Lrefill_loop:
+        push    %rdi            # Read one char
+        call    xt_KEY
+        pop     %rdi
+        DPOP    %rax
+
+        test    %al, %al        # Stop on zero (nothing read)
+        jz      .Lrefill_end
+
+        cmpb    $0x04, %al      # ^D: Restart
+        jz      .Lrefill_end
+
+        cmpb    $0x03, %al      # ^C: Restart
+        je      _REFILL
+
+        cmpq    $source_buf, %rdi # Ignore DEL on first col
+        je      .Lrefill_not_del
+        cmpb    $0x7f, %al      # DEL
+        jne     .Lrefill_not_del
+        dec     %rdi
+        push    %rdi
+        DPUSH   $'\b'
+        call    xt_EMIT
+        DPUSH   $' '
+        call    xt_EMIT
+        DPUSH   $'\b'
+        call    xt_EMIT
+        pop     %rdi
+        jmp     .Lrefill_loop
+.Lrefill_not_del:
+
+        incq    %rbx
+
+        cmpb    $'\r', %al      # Stop on newline
+        je      .Lrefill_end
+        cmpb    $'\n', %al
+        je      .Lrefill_end
+
+        stosb                   # Add to buffer
+
+        push    %rdi
+        DPUSH   %rax
+        call    xt_EMIT         # Echo
+        pop     %rdi
+
+        cmpq    $(source_buf+SOURCE_SZ), %rdi
+        jl      .Lrefill_loop   # Stop on end of buffer
+
+.Lrefill_end:
+        movq    $0, source_idx
+        subq    $source_buf, %rdi
+        movq    %rdi, source_cnt
+        ret
+
+
+DEFINE_WORD REFILL, "REFILL"
+        call    _REFILL
+        test    %rbx, %rbx
+        setz    %al             # 0 if rbx <> 0
+        movzxb  %al, %rax
+        decq    %rax            # -1 (TRUE) if rbx <> 0
+        DPUSH   %rax
         ret
 
 
@@ -759,8 +832,6 @@ _WORD:  # ( "<chars>ccc<char>" -- ) %dl: char
 
         cmpb    %dl, %al
         je      .Lword_skip
-        cmpb    $'\n', %al
-        je      .Lword_end
 
 .Lword_loop: # Copy to word_buf until a space is found
         cmpq    $WORD_SZ, %rdi
@@ -774,10 +845,7 @@ _WORD:  # ( "<chars>ccc<char>" -- ) %dl: char
         incq    %rsi
 
         cmpb    %dl, %al
-        je      .Lword_end
-        cmpb    $'\n', %al
-        je      .Lword_end
-        jmp     .Lword_loop
+        jne     .Lword_loop
 
 .Lword_end: # Set source_idx and word_cnt
         movq    %rsi, source_idx
@@ -794,6 +862,12 @@ word_cnt: .byte 0
 word_buf:
         .skip WORD_SZ
         .byte 0
+
+
+DEFINE_WORD Back, "\\", FLAG_IMM # ( -- )
+        movb   $'\n', %dl
+        call    _WORD
+        ret
 
 
 _NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
@@ -837,10 +911,13 @@ DEFINE_WORD BYE, "BYE"
 
 DEFINE_WORD QUIT, "QUIT"
         movq    rstack_init, %rsp       # Empty the return stack
+
 .Lquit_loop:
         call    _REFILL
-        test    %rax, %rax
+        test    %rbx, %rbx
         jz      xt_BYE                  # No return
+        DPUSH   $' '
+        call    xt_EMIT
         call    xt_INTERPRET
         movq    $.Lquit_msg, %rsi
         movq    $QUIT_MSG_SZ, %rdx
@@ -848,12 +925,12 @@ DEFINE_WORD QUIT, "QUIT"
         jmp     .Lquit_loop
 
 .Lquit_msg:
-        .ascii  "ok\n"
+        .ascii  "ok\r\n"
         .equ QUIT_MSG_SZ, (.-.Lquit_msg)
 
 
 DEFINE_WORD ABORT, "ABORT"
-        movq    $dstack_init, %rbp      # Empty data stack
+        movq    $dstack_start, %rbp     # Empty data stack
         jmp     xt_QUIT                 # No return
 
 
@@ -881,7 +958,6 @@ _FIND: # ( -- ) %rax : counted str, %rbx := defptr, %rdi := xt, %dl := flags
         jne     .L_find_loop     # Next word if not equal
 
         # Found ! After repe, %rdi contains the xt
-
 .L_find_not_found:
         ret
 
