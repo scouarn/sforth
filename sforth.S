@@ -130,7 +130,7 @@ _TYPE:
 _REFILL:
         movq    $SYS_READ,    %rax
         movq    $STDIN,       %rdi
-        movq    $source_buff, %rsi
+        movq    $source_buf,  %rsi
         movq    $SOURCE_SZ,   %rdx
         syscall
 
@@ -140,23 +140,50 @@ _REFILL:
 
 source_idx: .quad 0 # >IN
 source_cnt: .quad 0
-source_buff:
+source_buf:
         .skip SOURCE_SZ
         .byte 0
 
 
-_WORD:  # ( "<spaces>ccc<space>" -- )
+_WORD: # ( "<spaces>ccc<space>" -- )
+        movq    $source_buf, %rsi
+        addq    source_idx,  %rsi # Pointer in source_buf
+        movq    $word_buf,   %rdi
+
+.Lword_skip: # Skip leading spaces
+        cmpq    $(source_buf+SOURCE_SZ), %rsi
+        jge     .Lword_end
+        lodsb
+        cmpb    $' ', %al
+        je      .Lword_skip
+
+.Lword_loop: # Copy to word_buf until a space is found
+        cmpq    $(word_buf+WORD_SZ), %rdi
+        jge     .Lword_end
+        stosb
+
+        cmpq    $(source_buf+SOURCE_SZ), %rsi
+        jge     .Lword_end
+        lodsb
+
+        cmpb    $' ', %al
+        jne      .Lword_loop
+
+.Lword_end: # Compute source_idx and word_cnt
+        subq    $source_buf, %rsi
+        movq    %rsi, source_idx
+        subq    $word_buf, %rdi
+        movq    %rdi, word_cnt
         ret
 
 
-# Counted string
-word_cnt: .byte 0
-word_buff:
+word_cnt: .quad 0
+word_buf:
         .skip WORD_SZ
         .byte 0
 
 
-_NUMBER: # ( -- ) Parses word_buff, %rax := n|u, %rbx := flag
+_NUMBER: # ( -- ) Parses word_buf, %rax := n|u, %rbx := flag
         ret
 
 
@@ -187,6 +214,16 @@ DEFINE_WORD QUIT, "QUIT"
 
 
 DEFINE_WORD INTERPRET, "INTERPRET"
+.Linterpret_loop:
+        call    _WORD
+        cmpq    $0, word_cnt
+        jg      .Linterpret_not_empty
+        ret
+.Linterpret_not_empty:
+        movq    $word_buf, %rsi
+        movq    word_cnt,  %rdx
+        call    _TYPE
+        jmp     .Linterpret_loop
         ret
 
 
