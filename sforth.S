@@ -607,14 +607,16 @@ DEFINE_WORD Rsq, "]"
 
 DEFINE_WORD Comma, ","          # ( x -- )
         DPOP    %rax
-        movq    %rax, curr_def
+        movq    curr_def, %rdi
+        movq    %rax, (%rdi)
         addq    $8, curr_def
         ret
 
 
 DEFINE_WORD CComma, "C,"        # ( char -- )
         DPOP    %rax
-        movb    %al, curr_def
+        movq    curr_def, %rdi
+        movb    %al, (%rdi)
         incq    curr_def
         ret
 
@@ -656,7 +658,8 @@ _LITERAL: # ( -- ) %rax : x
 
 
 DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
-        call    _WORD           # TODO: check for failure
+        movb    $' ', %dl
+        call    _WORD           # FIXME: Ignore empty word ? Allows for :NONAME
 
         movq    last_def, %rax
         movq    curr_def, %rdi
@@ -677,7 +680,34 @@ DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
         ret
 
 
+DEFINE_WORD RECURSE, "RECURSE", FLAG_IMM # ( -- )
+        # Interpretation: toggle the visibility flag of the last definition
+        movq    last_def, %rdi
+        xorb    $FLAG_HIDDEN, 8(%rdi)
+        ret
+
+
 ## Parser
+
+DEFINE_WORD SupIN, ">IN"
+        DPUSH   $source_idx
+        ret
+source_idx: .quad 0
+
+
+DEFINE_WORD HashIN, "#IN"
+        DPUSH   $source_cnt
+        ret
+source_cnt: .quad 0
+
+
+DEFINE_WORD TIB, "TIB"
+        DPUSH   $source_buf
+        ret
+source_buf:
+        .skip SOURCE_SZ
+        .byte 0
+
 
 _REFILL: # ( -- ) Update source_buf, source_idx and source_cnt
         movq    $SYS_READ,    %rax
@@ -689,14 +719,9 @@ _REFILL: # ( -- ) Update source_buf, source_idx and source_cnt
         movq    %rax, source_cnt
         ret
 
-source_idx: .quad 0 # >IN
-source_cnt: .quad 0
-source_buf:
-        .skip SOURCE_SZ
-        .byte 0
 
-
-_WORD: # ( "<spaces>ccc<space>" -- ) Update source_idx, word_buf and word_cnt
+_WORD:  # ( "<chars>ccc<char>" -- ) %dl: char
+        # Update source_idx, word_buf and word_cnt
         movq    source_idx, %rsi # Index in source_buf
         xorq    %rdi, %rdi       # Index in word_cnt
 
@@ -706,7 +731,7 @@ _WORD: # ( "<spaces>ccc<space>" -- ) Update source_idx, word_buf and word_cnt
         movb    source_buf(%rsi), %al
         incq    %rsi
 
-        cmpb    $' ', %al
+        cmpb    %dl, %al
         je      .Lword_skip
         cmpb    $'\n', %al
         je      .Lword_end
@@ -722,7 +747,7 @@ _WORD: # ( "<spaces>ccc<space>" -- ) Update source_idx, word_buf and word_cnt
         movb    source_buf(%rsi), %al
         incq    %rsi
 
-        cmpb    $' ', %al
+        cmpb    %dl, %al
         je      .Lword_end
         cmpb    $'\n', %al
         je      .Lword_end
@@ -730,10 +755,16 @@ _WORD: # ( "<spaces>ccc<space>" -- ) Update source_idx, word_buf and word_cnt
 
 .Lword_end: # Set source_idx and word_cnt
         movq    %rsi, source_idx
-        movq    %rdi, word_cnt
+        movq    %rdi, %rax
+        movb    %al,  word_cnt
         ret
 
-word_cnt: .quad 0
+
+DEFINE_WORD WORD, "WORD"        # ( char "<chars>ccc<char>" -- c-addr )
+        DPOP    %rdx
+        call    _WORD
+        DPUSH   $word_cnt       # Addr of counted string
+word_cnt: .byte 0
 word_buf:
         .skip WORD_SZ
         .byte 0
@@ -743,12 +774,15 @@ _NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
         xorq    %rsi, %rsi      # Index in word_buf
         xorq    %rax, %rax      # Result
         movq    $0, %rbx        # FALSE (failure)
+        movzxb  word_cnt, %rdx
 
 .Lnumber_loop:
-        movzxb  source_buf(%rsi), %rcx
+        movzxb  word_buf(%rsi), %rcx
         incq    %rsi
+        cmpb    $'9', %cl
+        jbe     .Lnumber_digit
         cmpb    $'A', %cl
-        jb      .Lnumber_digit
+        jb      .Lnumber_fail
         subb    $('A'-'0'-10), %cl
 .Lnumber_digit:
         subb    $'0', %cl
@@ -758,7 +792,7 @@ _NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
         shlq    $4, %rax        # Multiply by 15
         addq    %rcx, %rax      # Add digit
 
-        cmpq    word_cnt, %rsi
+        cmpq    %rdx, %rsi
         jl      .Lnumber_loop
 
         decq    %rbx            # TRUE (ok)
@@ -828,8 +862,9 @@ _FIND: # ( -- ) Find word in word_buf, %rbx := defptr, %rdi := xt, %dl := flags
 
 DEFINE_WORD INTERPRET, "INTERPRET"
 .Linterpret_loop:
+        movb    $' ', %dl
         call    _WORD
-        cmpq    $0, word_cnt
+        cmpb    $0, word_cnt
         jg      .Linterpret_try_find
         ret
 
@@ -871,7 +906,7 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         movq    $.Linterpret_msg_sz, %rdx
         call    _TYPE           # Print message
         movq    $word_buf, %rsi
-        movq    word_cnt,  %rdx
+        movzxb  word_cnt,  %rdx
         call    _TYPE           # Print word
         call    xt_CR
         jmp     xt_ABORT        # No return
