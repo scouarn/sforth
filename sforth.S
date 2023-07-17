@@ -17,7 +17,8 @@
 .equ SOURCE_SZ, 256
 .equ WORD_SZ,   256
 
-.equ FLAG_IMM, 0x01
+.equ FLAG_IMM,    0x01
+.equ FLAG_HIDDEN, 0x02
 
 .equ TRUE_VAL,  (~0)
 .equ FALSE_VAL, 0
@@ -211,6 +212,22 @@ DEFINE_WORD QUIT, "QUIT"
 .Lquit_msg:
         .ascii  "ok\n"
         .equ QUIT_MSG_SZ, (.-.Lquit_msg)
+
+
+DEFINE_WORD STATE, "STATE"
+        DPUSH   $state
+        ret
+state: .quad 0
+
+
+DEFINE_WORD Lsq, "[", FLAG_IMM
+        incq    state   # State becomes 0 = FALSE
+        ret
+
+
+DEFINE_WORD Rsq, "]"
+        decq    state   # State becomes -1 = TRUE
+        ret
 
 
 DEFINE_WORD INTERPRET, "INTERPRET"
