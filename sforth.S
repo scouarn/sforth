@@ -576,6 +576,32 @@ _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
         ret
 
 
+DEFINE_WORD Dot, "."            # ( u -- ) Print hex unsigned with leading 0s
+        movq    $16, %rcx
+        DPOP    %rax
+.Ldot_loop:
+        rolq    $4, %rax
+        movq    %rax, %rbx
+        andq    $0x0f, %rbx
+        addb    $'0', %bl
+        cmpb    $'9', %bl
+        jbe     .Ldot_emit
+        addb    $('A'-'0'-10), %bl
+.Ldot_emit:
+        DPUSH   %rbx
+        push    %rax
+        push    %rcx
+        call    xt_EMIT
+        pop     %rcx
+        pop     %rax
+        dec     %rcx
+        jnz     .Ldot_loop
+.Ldot_end:
+        DPUSH   $' '
+        call    xt_EMIT
+        ret
+
+
 # Compilation
 
 DEFINE_WORD CP, "CP"            # ( -- addr )
@@ -872,7 +898,8 @@ DEFINE_WORD FIND, "FIND"        # ( c-addr -- c-addr 0 | xt 1 | xt -1 )
 .Lfind_found:
         DPUSH   %rdi            # xt
         testb   $FLAG_IMM, %dl
-        setnz   %rax            # 1 if imm, 0 else
+        setnz   %al             # 1 if imm, 0 else
+        movzxb  %al, %rax
         shl     $1, %rax        # 2 if imm, 0 else
         decq    %rax            # 1 if imm, -1 else
         DPUSH   %rax
