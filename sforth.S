@@ -64,6 +64,7 @@ rstack_init:    .quad
         .text
         .globl _start
 _start:
+        cld
         movq %rsp, rstack_init
         movq $dstack_init, %rbp         # Data stack pointer
         jmp  xt_QUIT                    # No return
@@ -104,61 +105,90 @@ DEFINE_WORD \label, \name, \flags
         .section .dictionary, "awx", @progbits
 
 
-DEFINE_WORD BYE, "BYE"
-        movq    $SYS_EXIT, %rax
-        movq    $EXIT_SUCCESS, %rdi
+## IO
+
+DEFINE_WORD EMIT, "EMIT"        # ( char -- )
+        movq    $SYS_WRITE, %rax
+        movq    $STDOUT, %rdi
         syscall
-
-
-DEFINE_WORD REFILL, "REFILL"
-        movq    $TRUE_VAL, %rax
-        ret
-
-
-DEFINE_WORD QUIT, "QUIT"
-        movq    rstack_init, %rsp  # Empty return stack
-.Lquit_loop:
-        call    xt_REFILL
-        DPOP    %rax
-        test    %rax, %rax
-        jz      xt_BYE
-        call    xt_INTERPRET
-        DPUSH   $.Lquit_msg
-        DPUSH   $QUIT_MSG_SZ
-        call    xt_TYPE
-        jmp     .Lquit_loop
-
-.Lquit_msg:
-        .ascii  "ok\r\n"
-        .equ QUIT_MSG_SZ, (.-.Lquit_msg)
-
-
-DEFINE_WORD INTERPRET, "INTERPRET"
+        addq    $8, %rbp        # Drop
         ret
 
 
 DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
         DPOP    %rdx
         DPOP    %rsi
+_TYPE:
         movq    $SYS_WRITE, %rax
         movq    $STDOUT, %rdi
         syscall
         ret
 
 
-# Counted string
-word_cnt:
+## Parser
+
+_REFILL:
+        movq    $SYS_READ,    %rax
+        movq    $STDIN,       %rdi
+        movq    $source_buff, %rsi
+        movq    $SOURCE_SZ,   %rdx
+        syscall
+
+        movq    $0,   source_idx
+        movq    %rax, source_cnt
+        ret
+
+source_idx: .quad 0 # >IN
+source_cnt: .quad 0
+source_buff:
+        .skip SOURCE_SZ
         .byte 0
+
+
+_WORD:  # ( "<spaces>ccc<space>" -- )
+        ret
+
+
+# Counted string
+word_cnt: .byte 0
 word_buff:
         .skip WORD_SZ
         .byte 0
 
-# Counted string
-source_cnt:
-        .byte 0
-source_buff:
-        .skip SOURCE_SZ
-        .byte 0
+
+_NUMBER: # ( -- ) Parses word_buff, %rax := n|u, %rbx := flag
+        ret
+
+
+
+## Interpreter
+
+DEFINE_WORD BYE, "BYE"
+        movq    $SYS_EXIT, %rax
+        movq    $EXIT_SUCCESS, %rdi
+        syscall
+
+
+DEFINE_WORD QUIT, "QUIT"
+        movq    rstack_init, %rsp       # Empty the return stack
+.Lquit_loop:
+        call    _REFILL
+        test    %rax, %rax
+        jz      xt_BYE                  # No return
+        call    xt_INTERPRET
+        movq    $.Lquit_msg, %rsi
+        movq    $QUIT_MSG_SZ, %rdx
+        call    _TYPE
+        jmp     .Lquit_loop
+
+.Lquit_msg:
+        .ascii  "ok\n"
+        .equ QUIT_MSG_SZ, (.-.Lquit_msg)
+
+
+DEFINE_WORD INTERPRET, "INTERPRET"
+        ret
+
 
 lastest:   .quad _LAST_DEF
 current:   .quad user_dict
