@@ -128,10 +128,79 @@ DEFINE_WORD CR, "CR"            # ( -- )
 DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
         DPOP    %rdx
         DPOP    %rsi
-_TYPE:
+_TYPE: # ( -- ) %rsi : c-addr, %rdx : u
         movq    $SYS_WRITE, %rax
         movq    $STDOUT, %rdi
         syscall
+        ret
+
+
+# Compilation
+
+DEFINE_WORD CP, "CP"            # ( -- addr )
+        DPUSH   $curr_def
+        ret
+curr_def: .quad user_dict
+
+
+DEFINE_WORD LASTEST, "LASTEST"  # ( -- addr )
+        DPUSH   $last_def
+        ret
+
+
+DEFINE_WORD STATE, "STATE"
+        DPUSH   $state
+        ret
+state: .quad 0
+
+
+DEFINE_WORD Lsq, "[", FLAG_IMM
+        incq    state   # State becomes 0 = FALSE
+        ret
+
+
+DEFINE_WORD Rsq, "]"
+        decq    state   # State becomes -1 = TRUE
+        ret
+
+
+DEFINE_WORD Comma, ","          # ( x -- )
+        DPOP    %rax
+        movq    %rax, curr_def
+        addq    $8, curr_def
+        ret
+
+
+DEFINE_WORD CComma, "C,"        # ( char -- )
+        DPOP    %rax
+        movb    %al, curr_def
+        incq    curr_def
+        ret
+
+
+DEFINE_WORD COMPILEComma, "COMPILE," # ( xt -- )
+        DPOP    %rax # xt
+_COMPILE: # ( -- ) %rax : xt
+        # Compile: call REL
+        # Where REL is xt relative to the next instruction:
+        # REL = xt - (curr_def + 5) = %rax - 5 - %rdx
+        movq    curr_def, %rdx
+        movb    $0xe8, (%rdx)   # Append opcode of call
+        subq    $5,    %rax
+        subq    %rdx,  %rax
+        movl    %eax,  1(%rdx)  # Append offset
+        addq    $5, curr_def    # Update compilation pointer
+        ret
+
+
+DEFINE_WORD LITERAL, "LITERAL", FLAG_IMM # ( x -- )
+        DPOP    %rax
+_LITERAL: # ( -- ) %rax : x
+        # Compile: leaq -8(%rbp), %rbp
+
+        # Compile: movq $IMM, (%rbp)
+        # Where IMM is what's in %rax
+
         ret
 
 
@@ -255,24 +324,8 @@ DEFINE_WORD ABORT, "ABORT"
         jmp     xt_QUIT                 # No return
 
 
-DEFINE_WORD STATE, "STATE"
-        DPUSH   $state
-        ret
-state: .quad 0
-
-
-DEFINE_WORD Lsq, "[", FLAG_IMM
-        incq    state   # State becomes 0 = FALSE
-        ret
-
-
-DEFINE_WORD Rsq, "]"
-        decq    state   # State becomes -1 = TRUE
-        ret
-
-
 _FIND: # ( -- ) Find word in word_buf, %rbx := defptr, %rdi := xt, %dl := flags
-        movq    lastest, %rbx
+        movq    last_def, %rbx
         jmp     .Lfind_begin
 
 .Lfind_loop:
@@ -314,11 +367,12 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         cmpq    $0, state
         jz      .Linterpret_exec_word
 
-        # TODO: Compile word
+        movq    %rdi, %rax
+        call    _COMPILE        # Compile xt
         jmp     .Linterpret_loop
 
 .Linterpret_exec_word:
-        call    *%rdi           # Interpreting: call xt
+        call    *%rdi           # Execute xt
         jmp     .Linterpret_loop
 
 
@@ -329,11 +383,11 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         cmpq    $0, state
         jz      .Linterpret_exec_number
 
-        # TODO: Compile number
+        call    _LITERAL        # Compile number
         jmp     .Linterpret_loop
 
 .Linterpret_exec_number:
-        DPUSH   %rax            # Interpreting: push number
+        DPUSH   %rax            # Push number
         jmp     .Linterpret_loop
 
 
@@ -353,6 +407,5 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         .equ .Linterpret_msg_sz, (.-.Linterpret_msg)
 
 
-lastest:   .quad _LAST_DEF
-current:   .quad user_dict
+last_def:  .quad _LAST_DEF
 user_dict: .skip DICT_SZ
