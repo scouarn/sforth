@@ -214,6 +214,28 @@ _LITERAL: # ( -- ) %rax : x
         ret
 
 
+DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
+        call    _WORD           # TODO: check for failure
+
+        movq    last_def, %rax
+        movq    curr_def, %rdi
+        movq    %rdi, last_def  # Update last_def
+        stosq                   # Put link field
+
+        movb    $FLAG_HIDDEN, %al
+        stosb                   # Put hidden flag
+
+        movb    word_cnt, %al
+        stosb                   # Put name size
+
+        movq    $word_buf, %rsi
+        movzxb  %al, %rcx
+        repe    movsb           # Put name
+
+        movq    %rdi, curr_def
+        ret
+
+
 ## Parser
 
 _REFILL: # ( -- ) Update source_buf, source_idx and source_cnt
@@ -345,6 +367,8 @@ _FIND: # ( -- ) Find word in word_buf, %rbx := defptr, %rdi := xt, %dl := flags
         jz      .Lfind_not_found
 
         movb    8(%rbx), %dl    # Flags
+        test    $FLAG_HIDDEN, %dl
+        jnz     .Lfind_loop     # Hidden word
 
         movzxb  9(%rbx), %rcx   # Length
         cmpb    word_cnt, %cl
