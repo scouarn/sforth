@@ -1,5 +1,5 @@
 ### Scouarn Forth
-# Bootstrap system
+# Non standard bootstrap system
 
 ## Refs :
 # - https://compilercrim.es/bootstrap/miniforth/#parsing
@@ -166,9 +166,11 @@ _WORD: # ( "<spaces>ccc<space>" -- ) Update source_idx, word_buf and word_cnt
 
         cmpb    $' ', %al
         je      .Lword_skip
+        cmpb    $'\n', %al
+        je      .Lword_end
 
 .Lword_loop: # Copy to word_buf until a space is found
-        cmpq    %rsi, word_cnt
+        cmpq    $WORD_SZ, %rdi
         jge     .Lword_end
         movb    %al, word_buf(%rdi)
         incq    %rdi
@@ -307,22 +309,43 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         call    _FIND
         test    %rbx, %rbx
         jz      .Linterpret_try_number
+        test    $FLAG_IMM, %dl
+        jnz     .Linterpret_exec_word
+        cmpq    $0, state
+        jz      .Linterpret_exec_word
+
+        # TODO: Compile word
+        jmp     .Linterpret_loop
+
+.Linterpret_exec_word:
+        call    *%rdi           # Interpreting: call xt
+        jmp     .Linterpret_loop
+
 
 .Linterpret_try_number:
         call    _NUMBER
         test    %rbx, %rbx
         jz      .Linterpret_not_found
+        cmpq    $0, state
+        jz      .Linterpret_exec_number
+
+        # TODO: Compile number
+        jmp     .Linterpret_loop
+
+.Linterpret_exec_number:
+        DPUSH   %rax            # Interpreting: push number
+        jmp     .Linterpret_loop
+
 
 .Linterpret_not_found:
-nfound:
         movq    $.Linterpret_msg, %rsi
         movq    $.Linterpret_msg_sz, %rdx
-        call    _TYPE
+        call    _TYPE           # Print message
         movq    $word_buf, %rsi
         movq    word_cnt,  %rdx
-        call    _TYPE
+        call    _TYPE           # Print word
         call    xt_CR
-        jmp     xt_QUIT         # No return
+        jmp     xt_ABORT        # No return
         ret
 
 .Linterpret_msg:
