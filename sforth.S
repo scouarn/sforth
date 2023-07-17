@@ -128,13 +128,12 @@ _TYPE:
 
 ## Parser
 
-_REFILL:
+_REFILL: # ( -- ) Update source_buf, source_idx and source_cnt
         movq    $SYS_READ,    %rax
         movq    $STDIN,       %rdi
         movq    $source_buf,  %rsi
         movq    $SOURCE_SZ,   %rdx
         syscall
-
         movq    $0,   source_idx
         movq    %rax, source_cnt
         ret
@@ -146,37 +145,40 @@ source_buf:
         .byte 0
 
 
-_WORD: # ( "<spaces>ccc<space>" -- )
-        movq    $source_buf, %rsi
-        addq    source_idx,  %rsi # Pointer in source_buf
-        movq    $word_buf,   %rdi
+_WORD: # ( "<spaces>ccc<space>" -- ) Update source_idx, word_buf and word_cnt
+        movq    source_idx, %rsi # Index in source_buf
+        xorq    %rdi, %rdi       # Index in word_cnt
 
 .Lword_skip: # Skip leading spaces
-        cmpq    $(source_buf+SOURCE_SZ), %rsi
+        cmpq    source_cnt, %rsi
         jge     .Lword_end
-        lodsb
+        movb    source_buf(%rsi), %al
+        incq    %rsi
+
         cmpb    $' ', %al
         je      .Lword_skip
 
 .Lword_loop: # Copy to word_buf until a space is found
-        cmpq    $(word_buf+WORD_SZ), %rdi
+        cmpq    %rsi, word_cnt
         jge     .Lword_end
-        stosb
+        movb    %al, word_buf(%rdi)
+        incq    %rdi
 
-        cmpq    $(source_buf+SOURCE_SZ), %rsi
+        cmpq    source_cnt, %rsi
         jge     .Lword_end
-        lodsb
+        movb    source_buf(%rsi), %al
+        incq    %rsi
 
         cmpb    $' ', %al
-        jne      .Lword_loop
+        je      .Lword_end
+        cmpb    $'\n', %al
+        je      .Lword_end
+        jmp     .Lword_loop
 
-.Lword_end: # Compute source_idx and word_cnt
-        subq    $source_buf, %rsi
+.Lword_end: # Set source_idx and word_cnt
         movq    %rsi, source_idx
-        subq    $word_buf, %rdi
         movq    %rdi, word_cnt
         ret
-
 
 word_cnt: .quad 0
 word_buf:
@@ -184,7 +186,30 @@ word_buf:
         .byte 0
 
 
-_NUMBER: # ( -- ) Parses word_buf, %rax := n|u, %rbx := flag
+_NUMBER: # ( -- ) Parse word_buf, %rax := n|u, %rbx := flag
+        xorq    %rsi, %rsi      # Index in word_buf
+        xorq    %rax, %rax      # Result
+        movq    $0, %rbx        # FALSE (failure)
+
+.Lnumber_loop:
+        movzxb  source_buf(%rsi), %rcx
+        incq    %rsi
+        cmpb    $'A', %cl
+        jb      .Lnumber_digit
+        subb    $('A'-'0'-10), %cl
+.Lnumber_digit:
+        subb    $'0', %cl
+        cmpb    $0x0f, %cl
+        ja      .Lnumber_fail
+
+        shlq    $4, %rax        # Multiply by 15
+        addq    %rcx, %rax      # Add digit
+
+        cmpq    word_cnt, %rsi
+        jl      .Lnumber_loop
+
+        decq    %rbx            # TRUE (ok)
+.Lnumber_fail:
         ret
 
 
@@ -237,6 +262,7 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         jg      .Linterpret_not_empty
         ret
 .Linterpret_not_empty:
+        call    _NUMBER
         movq    $word_buf, %rsi
         movq    word_cnt,  %rdx
         call    _TYPE
