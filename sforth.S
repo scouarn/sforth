@@ -294,6 +294,14 @@ DEFINE_WORD CHARPlus, "CHAR+"   # ( c-addr1 -- c-addr2 )
         ret
 
 
+DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
+        DPOP    %rcx            # u
+        DPOP    %rdi            # add2
+        DPOP    %rsi            # add1
+        repe    movsb
+        ret
+
+
 ## Arithmetic
 
 DEFINE_WORD Plus, "+"           # ( n1 | u1 n2 | u2 -- n3 | u3 )

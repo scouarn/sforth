@@ -22,6 +22,12 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : CR 0D EMIT 0A EMIT ;
 
 
+: AHEAD ( C: -- ori ) ( -- )
+    E9 C,                   \ JMP rel32
+    HERE                    \ ori
+    99 C, 99 C, 99 C, 99 C, \ rel32
+; IMMEDIATE
+
 : IF ( C: -- ori ) ( x -- )
     48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
     48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
@@ -81,7 +87,6 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 ; IMMEDIATE
 
 : REPEAT ( C: dest -- orig dest ) ( -- )
-
     \ Compile a jump to dest
     E9 C,                   \ JMP rel32
     HERE 4 + -              ( rel32 )
@@ -93,19 +98,11 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 ; IMMEDIATE
 
 
-
-
-
-
 : / ( x1 x2 -- x3 ) /MOD NIP ;
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ TODO: use 2/ 2/ 2/ instead
-
 : ? ( addr -- ) @ . ;
 : SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND . . ;
 : .S ( x * i -- ) BEGIN DEPTH 0> WHILE CR . REPEAT ;
-
-: .( 29 PARSE TYPE ;
-
 
 : ' ( "<spaces>name" -- xt ) PARSE-NAME FIND NIP ;
 
@@ -124,6 +121,34 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : ['] ( C: "<spaces>name" -- ) ( -- xt ) ' POSTPONE LITERAL ; IMMEDIATE
 : [COMPILE] ( C: "<spaces>name" -- ) ' COMPILE, ; IMMEDIATE
 
-: CHAR ( "<spaces>name" -- char ) PARSE-NAME DROP C@ ;
+: CHAR   ( "<spaces>name" -- char )           PARSE-NAME DROP C@ ;
 : [CHAR] ( C: "<spaces>name" -- ) ( -- char ) CHAR POSTPONE LITERAL ; IMMEDIATE
+
+
+
+: SLITERAL ( C: c-addr1 u ) ( -- c-addr2 u )
+    DUP >R
+    POSTPONE AHEAD          \ Skip string data
+    R> HERE >R ALLOT        \ Allocate string
+    POSTPONE THEN
+    R@  POSTPONE LITERAL    \ Push c-addr2
+    DUP POSTPONE LITERAL    \ Push u
+    ( c-addr1 u ) R> SWAP ( c-addr1 c-addr2 u ) MOVE \ Copy string data
+; IMMEDIATE
+
+: C" ( C: "ccc<quote>" -- ) ( -- c-addr ) \ Counted string !
+    [CHAR] " PARSE
+    DUP >R
+    POSTPONE AHEAD          \ Skip string data
+    R> HERE >R
+    DUP C,                  \ Store length
+    ALLOT                   \ Allocate string
+    POSTPONE THEN
+    R@ POSTPONE LITERAL     \ Push c-addr2
+    R> 1+ SWAP ( c-addr1 c-addr3 u ) MOVE \ Copy string data
+; IMMEDIATE
+
+: S" ( C: "ccc<quote>" -- ) ( -- c-addr u ) [CHAR] " PARSE POSTPONE SLITERAL ; IMMEDIATE
+: ." ( C: "ccc<quote>" -- ) ( -- )          POSTPONE S" POSTPONE TYPE        ; IMMEDIATE
+: .( (    "ccc<quote>" -- ) ( -- )          [CHAR] ) PARSE TYPE ;
 
