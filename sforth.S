@@ -640,13 +640,23 @@ DEFINE_WORD Dot, "."            # ( u -- ) Print hex unsigned with leading 0s
 
 # Compilation
 
+DEFINE_WORD CONST_FLAG_IMM, "FLAG-IMM"
+        DPUSH   $FLAG_IMM
+        ret
+
+
+DEFINE_WORD CONST_FLAG_HIDDEN, "FLAG-HIDDEN"
+        DPUSH   $FLAG_HIDDEN
+        ret
+
+
 DEFINE_WORD CP, "CP"            # ( -- addr )
         DPUSH   $curr_def
         ret
 curr_def: .quad user_dict
 
 
-DEFINE_WORD LASTEST, "LASTEST"  # ( -- addr )
+DEFINE_WORD LATEST, "LATEST"  # ( -- addr )
         DPUSH   $last_def
         ret
 
@@ -1024,7 +1034,7 @@ DEFINE_WORD ABORT, "ABORT"
         jmp     xt_QUIT                 # No return
 
 
-_FIND: # ( rsi:c-addr rax:u -- rbx:nt rdi:xt dl:flags )
+_FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )
         movq    last_def, %rbx
         jmp     .L_find_begin
 
