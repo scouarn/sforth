@@ -1,7 +1,7 @@
 HEAD : ] HEAD ] [ C3 C, HIDE
 HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 
-: \ 0A PARSE DROP  ; IMMEDIATE \ Now we can comment
+: \ 0A PARSE 2DROP ; IMMEDIATE \ Now we can comment
 : ( 29 PARSE 2DROP ; IMMEDIATE ( Now we have both types of comments )
 
 \ We compiled a word called ':' that calls HEAD and enters compilation mode,
@@ -105,7 +105,7 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ;
 
 : ? ( addr -- ) @ . ;
-: SEE ( "<spaces>ccc<space>" -- ) BL WORD FIND . . ;
+: SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND . . ;
 : .S ( x * i -- ) BEGIN DEPTH 0> WHILE CR . REPEAT ;
 
 : .( 29 PARSE TYPE ;

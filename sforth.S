@@ -720,9 +720,6 @@ _LITERAL: # ( -- ) %rax : x
 
 
 DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
-        movb    $' ', %dl
-        call    _WORD           # FIXME: Ignore empty word ? Allows for :NONAME
-
         movq    last_def, %rax
         movq    curr_def, %rdi
         movq    %rdi, last_def  # Update last_def
@@ -731,11 +728,13 @@ DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
         movb    $FLAG_HIDDEN, %al
         stosb                   # Put hidden flag
 
-        movb    word_cnt, %al
-        stosb                   # Put name size
+        push    %rdi
+        call    _PARSE_NAME     # FIXME: Ignore empty word ? Allows for :NONAME
+        movq    %rdi, %rsi      # c-addr
+        mov     %rcx, %rax      # u
+        pop     %rdi
 
-        movq    $word_buf, %rsi
-        movzxb  %al, %rcx
+        stosb                   # Put size
         repe    movsb           # Put name
 
         movq    %rdi, curr_def
@@ -887,12 +886,6 @@ _WORD:  # ( "<chars>ccc<char>" -- ) %dl: char
         movb    %al,  word_cnt
         ret
 
-
-DEFINE_WORD WORD, "WORD"        # ( char "<chars>ccc<char>" -- c-addr )
-        DPOP    %rdx
-        call    _WORD
-        DPUSH   $word_cnt       # Addr of counted string
-        ret
 word_cnt: .byte 0
 word_buf:
         .skip WORD_SZ
@@ -912,8 +905,7 @@ _PARSE:  # ( bl:char "ccc<char>" -- rdi:c-addr rcx:u )
         movb    source_buf(%rsi), %al
         inc     %rsi
         inc     %rcx
-
-        cmpb    %bl, %al
+        cmpb    %al, %bl
         jne     .Lparse_loop
         dec     %rcx
 
@@ -930,14 +922,40 @@ DEFINE_WORD PARSE "PARSE"       # ( char "ccc<char>" -- c-addr u )
         ret
 
 
-_NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
+_PARSE_NAME: # ( "<spaces>ccc<space>" -- rdi:c-addr rcx:u )
+        movq    source_idx, %rsi
+        movq    source_cnt, %rdx
+
+.Lparse_name_skip: # Skip leading spaces
+        cmpq    %rdx, %rsi
+        jge     .Lparse_name_end
+        cmpb    $' ', source_buf(%rsi)
+        jne     .Lparse_name_end
+        incq    %rsi
+        jmp     .Lparse_name_skip
+
+.Lparse_name_end:
+        movq    %rsi, source_idx
+        movb    $' ', %bl
+        call    _PARSE
+        ret
+
+
+DEFINE_WORD PARSEMinusNAME "PARSE-NAME" # ( "<spaces>ccc<space>" -- c-addr u )
+        call    _PARSE_NAME
+        DPUSH   %rdi
+        DPUSH   %rcx
+        ret
+
+
+
+_NUMBER: # ( rdi:c-addr rdx:u -- rax:u rbx:flag ) Parse hex number
         xorq    %rsi, %rsi      # Index in word_buf
         xorq    %rax, %rax      # Result
         movq    $0, %rbx        # FALSE (failure)
-        movzxb  word_cnt, %rdx
 
 .Lnumber_loop:
-        movzxb  word_buf(%rsi), %rcx
+        movzxb  (%rdi,%rsi), %rcx
         incq    %rsi
         cmpb    $'9', %cl
         jbe     .Lnumber_digit
@@ -953,7 +971,7 @@ _NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
         addq    %rcx, %rax      # Add digit
 
         cmpq    %rdx, %rsi
-        jl      .Lnumber_loop
+        jb      .Lnumber_loop
 
         decq    %rbx            # TRUE (ok)
 .Lnumber_fail:
@@ -971,6 +989,7 @@ DEFINE_WORD BYE, "BYE"
 
 DEFINE_WORD QUIT, "QUIT"
         movq    rstack_init, %rsp       # Empty the return stack
+        movq    $0, state               # Interpreter
 .Lquit_loop:
         call    _REFILL
         test    %rbx, %rbx
@@ -1005,7 +1024,7 @@ DEFINE_WORD ABORT, "ABORT"
         jmp     xt_QUIT                 # No return
 
 
-_FIND: # ( -- ) %rax : counted str, %rbx := defptr, %rdi := xt, %dl := flags
+_FIND: # ( rsi:c-addr rax:u -- rbx:nt rdi:xt dl:flags )
         movq    last_def, %rbx
         jmp     .L_find_begin
 
@@ -1017,55 +1036,51 @@ _FIND: # ( -- ) %rax : counted str, %rbx := defptr, %rdi := xt, %dl := flags
 
         movb    8(%rbx), %dl    # Flags
         test    $FLAG_HIDDEN, %dl
-        jnz     .L_find_loop     # Hidden word
+        jnz     .L_find_loop    # Hidden word
 
         movzxb  9(%rbx), %rcx   # Length
-        cmpb    (%rax), %cl
-        jne     .L_find_loop     # Next word if the length doesn't match
+        cmp     %rax, %rcx
+        jne     .L_find_loop    # Next word if the length doesn't match
 
         leaq    10(%rbx), %rdi
-        leaq     1(%rax), %rsi  # Chars of the counted string
+        push    %rsi
         repe    cmpsb           # String compare
-        jne     .L_find_loop     # Next word if not equal
+        pop     %rsi
+        jne     .L_find_loop    # Next word if not equal
 
         # Found ! After repe, %rdi contains the xt
 .L_find_not_found:
         ret
 
 
-DEFINE_WORD FIND, "FIND"        # ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+DEFINE_WORD FIND, "FIND"        # ( c-addr u -- 0|nt xt )
         DPOP    %rax
+        DPOP    %rsi
         call    _FIND
-        test    %rbx, %rbx
-        jnz     .Lfind_found
-        DPUSH   %rax
-        DPUSH   $0
-        ret
-
-.Lfind_found:
+        DPUSH   %rbx            # nt
         DPUSH   %rdi            # xt
-        testb   $FLAG_IMM, %dl
-        setnz   %al             # 1 if imm, 0 else
-        movzxb  %al, %rax
-        shl     $1, %rax        # 2 if imm, 0 else
-        decq    %rax            # 1 if imm, -1 else
-        DPUSH   %rax
         ret
 
 
 DEFINE_WORD INTERPRET, "INTERPRET"
 .Linterpret_loop:
-        movb    $' ', %dl
-        call    _WORD
-        cmpb    $0, word_cnt
-        jg      .Linterpret_try_find
+        call    _PARSE_NAME
+        test    %rcx, %rcx
+        jnz     .Linterpret_try_find
         ret
 
 .Linterpret_try_find:
-        movq    $word_cnt, %rax         # Counted string
+        push    %rdi            # c-addr
+        push    %rcx            # u
+
+        movq    %rdi, %rsi      # c-addr
+        movq    %rcx, %rax      # u
         call    _FIND
         test    %rbx, %rbx
         jz      .Linterpret_try_number
+
+        addq    $16, %rsp       # Drop
+
         test    $FLAG_IMM, %dl
         jnz     .Linterpret_exec_word
         cmpq    $0, state
@@ -1081,9 +1096,15 @@ DEFINE_WORD INTERPRET, "INTERPRET"
 
 
 .Linterpret_try_number:
+        movq    0(%rsp), %rdx   # u
+        movq    8(%rsp), %rdi   # c-addr
         call    _NUMBER
+
         test    %rbx, %rbx
         jz      .Linterpret_not_found
+
+        addq    $16, %rsp       # Drop
+
         cmpq    $0, state
         jz      .Linterpret_exec_number
 
@@ -1099,8 +1120,8 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         movq    $.Linterpret_msg, %rsi
         movq    $.Linterpret_msg_sz, %rdx
         call    _TYPE           # Print message
-        movq    $word_buf, %rsi
-        movzxb  word_cnt,  %rdx
+        pop     %rdx            # u
+        pop     %rsi            # c-addr
         call    _TYPE           # Print word
         call    xt_CR
         jmp     xt_ABORT        # No return
