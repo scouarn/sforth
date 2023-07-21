@@ -28,10 +28,25 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
     99 C, 99 C, 99 C, 99 C, \ rel32
 ; IMMEDIATE
 
-
 : THEN ( C: ori -- )
-    DUP HERE SWAP - 4 - ( ori rel32 ) HERE .
+    DUP HERE SWAP - 4 - ( ori rel32 )
     SWAP H! \ write rel32 to ori
 ; IMMEDIATE
 
+: ELSE ( C: ori1 -- ori2 ) ( -- )
+    >R
+
+    E9 C,                   \ JMP rel32
+    HERE                    \ ori2
+    99 C, 99 C, 99 C, 99 C, \ rel32
+
+    R>
+
+    DUP HERE SWAP - 4 - ( ori2 ori1 rel32 )
+    SWAP H! ( ori2 ) \ write rel32 to ori1
+; IMMEDIATE
+
+
+HERE .
+: TEST DUP IF 41 EMIT ELSE 42 EMIT THEN . ;
 
