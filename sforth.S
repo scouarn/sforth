@@ -899,6 +899,37 @@ word_buf:
         .byte 0
 
 
+_PARSE:  # ( bl:char "ccc<char>" -- rdi:c-addr rcx:u )
+        movq    source_idx, %rsi
+        movq    source_cnt, %rdx
+        leaq    source_buf(%rsi), %rdi  # c-addr
+        xorq    %rcx, %rcx              # u
+
+.Lparse_loop: # Scan until end of buffer or <char> is found
+        cmpq    %rdx, %rsi
+        jge     .Lparse_end
+
+        movb    source_buf(%rsi), %al
+        inc     %rsi
+        inc     %rcx
+
+        cmpb    %bl, %al
+        jne     .Lparse_loop
+        dec     %rcx
+
+.Lparse_end:
+        movq    %rsi, source_idx
+        ret
+
+
+DEFINE_WORD PARSE "PARSE"       # ( char "ccc<char>" -- c-addr u )
+        DPOP    %rbx
+        call    _PARSE
+        DPUSH   %rdi
+        DPUSH   %rcx
+        ret
+
+
 _NUMBER: # ( -- ) Parse hex number in word_buf, %rax := n|u, %rbx := flag
         xorq    %rsi, %rsi      # Index in word_buf
         xorq    %rax, %rax      # Result

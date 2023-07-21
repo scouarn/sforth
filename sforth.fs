@@ -1,13 +1,15 @@
 HEAD : ] HEAD ] [ C3 C, HIDE
 HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 
-: \ 0A WORD DROP ; IMMEDIATE \ Now we can comment
-: ( 29 WORD DROP ; IMMEDIATE ( Now we have both types of comments )
+: \ 0A PARSE DROP  ; IMMEDIATE \ Now we can comment
+: ( 29 PARSE 2DROP ; IMMEDIATE ( Now we have both types of comments )
 
 \ We compiled a word called ':' that calls HEAD and enters compilation mode,
 \ then we appended a ret instruction and rendered it visible with HIDE.
 \ We compiled ';' that compiles a ret instruction, calls HIDE and disable
 \ compilation. We added a ret and set it visible and immediate.
+
+
 
 \ 48 C, 83 C, C5 C, 08 C, \ SUB $8, %rbp      ADD r/m64, imm8
 \ 48 C, 83 C, ED C, 08 C, \ SUB $8, %rbp      SUB r/m64, imm8
@@ -16,7 +18,15 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : HERE CP @ ;
 
 : BL 20 ;
+: SPACE 20 . ;
 : CR 0D EMIT 0A EMIT ;
+
+: TRUE FFFFFFFFFFFFFFFF ;
+: FALSE 0 ;
+
+: PAD ( -- addr ) SP@ 100 + ;
+
+: COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
 
 
@@ -91,18 +101,13 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 ; IMMEDIATE
 
 
-: TEST 10 BEGIN 1- DUP CR . DUP 0= UNTIL ;
-: TEST2 10 BEGIN DUP 0<> WHILE 1- DUP CR . REPEAT ;
-
-
-
-
 : / ( x1 x2 -- x3 ) /MOD NIP ;
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ;
 
 : ? ( addr -- ) @ . ;
 : SEE ( "<spaces>ccc<space>" -- ) BL WORD FIND . . ;
-: .S ;
-: DUMP ;
-: WORDS ;
+: .S ( x * i -- ) BEGIN DEPTH 0> WHILE CR . REPEAT ;
+
+: .( 29 PARSE TYPE ;
+
 
