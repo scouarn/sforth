@@ -115,7 +115,6 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
     IF \ Compile code that executes xt
         COMPILE,
     ELSE \ Compile code that compiles xt (default compilation behaviour)
-
         [ ' LITERAL  COMPILE, ]          \ Compile DPUSH $xt
         [ ' COMPILE, LITERAL  ] COMPILE, \ Compile COMPILE,
     THEN
@@ -125,16 +124,6 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : ['] ( C: "<spaces>name" -- ) ( -- xt ) ' POSTPONE LITERAL ; IMMEDIATE
 : [COMPILE] ( C: "<spaces>name" -- ) ' COMPILE, ; IMMEDIATE
 
-: CHAR PARSE-NAME DROP C@ ;
-: [CHAR] POSTPONE CHAR ; IMMEDIATE
-
-
-: GT1  AAAA CR . ;
-: GT4 POSTPONE GT1 ; IMMEDIATE
-: GT5 GT4 ;
-GT5
-
-: GT6 BBBB CR . ; IMMEDIATE
-: GT7 POSTPONE GT6 ;
-GT7
+: CHAR ( "<spaces>name" -- char ) PARSE-NAME DROP C@ ;
+: [CHAR] ( C: "<spaces>name" -- ) ( -- char ) CHAR POSTPONE LITERAL ; IMMEDIATE
 
