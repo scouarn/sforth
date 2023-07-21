@@ -167,12 +167,12 @@ DEFINE_WORD TwoDUP, "2DUP"      # ( x1 x2 -- x1 x2 x1 x2 )
 
 
 DEFINE_WORD TwoSWAP, "2SWAP"    # ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
-        movq    16(%rbp), %rax  # x1
-        movq    12(%rbp), %rbx  # x2
+        movq    24(%rbp), %rax  # x1
+        movq    16(%rbp), %rbx  # x2
         movq     8(%rbp), %rcx  # x3
         movq     0(%rbp), %rdx  # x4
-        movq    %rcx, 16(%rbp)  # x3
-        movq    %rdx, 12(%rbp)  # x4
+        movq    %rcx, 24(%rbp)  # x3
+        movq    %rdx, 16(%rbp)  # x4
         movq    %rax,  8(%rbp)  # x1
         movq    %rbx,  0(%rbp)  # x2
         ret
@@ -220,6 +220,13 @@ DEFINE_WORD Bang, "!"           # ( x addr -- )
         DPOP    %rax            # addr
         DPOP    %rbx            # x
         movq    %rbx, (%rax)
+        ret
+
+
+DEFINE_WORD HBang, "H!"         # ( x addr -- ) Write half cell
+        DPOP    %rax            # addr
+        DPOP    %rbx            # x
+        movl    %ebx, (%rax)
         ret
 
 
@@ -792,6 +799,9 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         jmp     .Lrefill_loop
 .Lrefill_not_del:
 
+        cmpb    $0x1b, %al      # Ignore escape printable
+        je      .Lrefill_loop
+
         incq    %rbx
 
         cmpb    $'\r', %al      # Stop on newline
@@ -921,14 +931,26 @@ DEFINE_WORD QUIT, "QUIT"
         DPUSH   $' '
         call    xt_EMIT
         call    xt_INTERPRET
+
+        cmpq    $0, state
+        jnz     .Lquit_compiling
         movq    $.Lquit_msg, %rsi
         movq    $QUIT_MSG_SZ, %rdx
+        jmp     .Lquit_ok
+.Lquit_compiling:
+        movq    $.Lquit_msg2, %rsi
+        movq    $QUIT_MSG2_SZ, %rdx
+        jmp     .Lquit_ok
+.Lquit_ok:
         call    _TYPE
         jmp     .Lquit_loop
 
 .Lquit_msg:
         .ascii  "ok\r\n"
         .equ QUIT_MSG_SZ, (.-.Lquit_msg)
+.Lquit_msg2:
+        .ascii  "ok (compiling)\r\n"
+        .equ QUIT_MSG2_SZ, (.-.Lquit_msg2)
 
 
 DEFINE_WORD ABORT, "ABORT"
