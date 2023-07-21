@@ -152,3 +152,12 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : ." ( C: "ccc<quote>" -- ) ( -- )          POSTPONE S" POSTPONE TYPE        ; IMMEDIATE
 : .( (    "ccc<quote>" -- ) ( -- )          [CHAR] ) PARSE TYPE ;
 
+: ABORT" ( C: "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
+    POSTPONE IF
+    POSTPONE ."
+    POSTPONE TYPE
+    POSTPONE CR
+    POSTPONE ABORT
+    POSTPONE THEN
+; IMMEDIATE
+
