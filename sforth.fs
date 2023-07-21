@@ -55,8 +55,7 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : AGAIN ( C: dest -- ) ( -- )
     E9 C,                   \ JMP rel32
     HERE 4 + -              ( rel32 )
-    HERE H! \ write rel32
-    4 CP +!
+    HERE H! 4 CP +!         \ write rel32
 ; IMMEDIATE
 
 : UNTIL ( C: dest -- ) ( x -- )
@@ -71,17 +70,30 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 ; IMMEDIATE
 
 : WHILE ( C: dest -- orig dest ) ( x -- )
-    
-    
+    48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
+    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
+    48 C, 85 C, C0 C,       \ TEST %rax, %rax   TEST r/m64, r64
+    0F C, 84 C,             \ JZ rel32
+    HERE SWAP               ( dest -- orig dest )
+    99 C, 99 C, 99 C, 99 C, \ rel32
 ; IMMEDIATE
 
 : REPEAT ( C: dest -- orig dest ) ( -- )
-    
-    
+
+    \ Compile a jump to dest
+    E9 C,                   \ JMP rel32
+    HERE 4 + -              ( rel32 )
+    HERE H! 4 CP +!         \ write rel32
+
+    \ Resolve backward reference to orig
+    DUP HERE SWAP - 4 - ( orig rel32 )
+    SWAP H!             \ write rel32 to orig
 ; IMMEDIATE
 
 
-: TEST [ HERE . ] 10 BEGIN 1- DUP CR . DUP 0= UNTIL ;
+: TEST 10 BEGIN 1- DUP CR . DUP 0= UNTIL ;
+: TEST2 10 BEGIN DUP 0<> WHILE 1- DUP CR . REPEAT ;
+
 
 
 
