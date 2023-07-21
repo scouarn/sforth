@@ -113,6 +113,12 @@ DEFINE_WORD DROP, "DROP"        # ( x -- )
         ret
 
 
+DEFINE_WORD NIP, "NIP"          # ( x1 x2 -- x2 )
+        DPOP    %rax
+        movq    %rax, (%rbp)
+        ret
+
+
 DEFINE_WORD DUP, "DUP"          # ( x -- x x )
         movq    (%rbp), %rax
         DPUSH   %rax
@@ -203,6 +209,17 @@ DEFINE_WORD RSup, "R>"          # ( -- x ) ( R: x -- )
 
 DEFINE_WORD RAt, "R@"           # ( -- x ) ( R: x -- x )
         movq    8(%rsp), %rax   # x
+        DPUSH   %rax
+        ret
+
+
+DEFINE_WORD SZero, "S0"         # ( -- addr )
+        DPUSH   $dstack_start
+        ret
+
+
+DEFINE_WORD SPAt, "SP@"         # ( -- addr )
+        mov     %rbp, %rax
         DPUSH   %rax
         ret
 
@@ -923,7 +940,6 @@ DEFINE_WORD BYE, "BYE"
 
 DEFINE_WORD QUIT, "QUIT"
         movq    rstack_init, %rsp       # Empty the return stack
-
 .Lquit_loop:
         call    _REFILL
         test    %rbx, %rbx

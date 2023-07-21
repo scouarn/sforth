@@ -16,12 +16,13 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : HERE CP @ ;
 
 : BL 20 ;
+: CR 0D EMIT 0A EMIT ;
 
-: SEE BL WORD FIND . . ;
 
-: IF ( C: -- ori ) ( flag -- )
-    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
+
+: IF ( C: -- ori ) ( x -- )
     48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
+    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
     48 C, 85 C, C0 C,       \ TEST %rax, %rax   TEST r/m64, r64
     0F C, 84 C,             \ JZ rel32
     HERE
@@ -43,10 +44,53 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
     R>
 
     DUP HERE SWAP - 4 - ( ori2 ori1 rel32 )
-    SWAP H! ( ori2 ) \ write rel32 to ori1
+    SWAP H! \ write rel32 to ori1
 ; IMMEDIATE
 
 
-HERE .
-: TEST DUP IF 41 EMIT ELSE 42 EMIT THEN . ;
+: BEGIN ( C: -- dest ) ( -- )
+    HERE
+; IMMEDIATE
+
+: AGAIN ( C: dest -- ) ( -- )
+    E9 C,                   \ JMP rel32
+    HERE 4 + -              ( rel32 )
+    HERE H! \ write rel32
+    4 CP +!
+; IMMEDIATE
+
+: UNTIL ( C: dest -- ) ( x -- )
+    48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
+    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
+    48 C, 85 C, C0 C,       \ TEST %rax, %rax   TEST r/m64, r64
+    0F C, 84 C,             \ JZ rel32
+
+    HERE 4 + -  ( rel32 )
+    HERE H!     \ write rel32
+    4 CP +!
+; IMMEDIATE
+
+: WHILE ( C: dest -- orig dest ) ( x -- )
+    
+    
+; IMMEDIATE
+
+: REPEAT ( C: dest -- orig dest ) ( -- )
+    
+    
+; IMMEDIATE
+
+
+: TEST [ HERE . ] 10 BEGIN 1- DUP CR . DUP 0= UNTIL ;
+
+
+
+: / ( x1 x2 -- x3 ) /MOD NIP ;
+: DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ;
+
+: ? ( addr -- ) @ . ;
+: SEE ( "<spaces>ccc<space>" -- ) BL WORD FIND . . ;
+: .S ;
+: DUMP ;
+: WORDS ;
 
