@@ -1,6 +1,3 @@
-HEAD : ] HEAD ] [ C3 C, HIDE
-HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
-
 : \ 0A PARSE DROP DROP ; IMMEDIATE \ Now we can comment
 : ( 29 PARSE DROP DROP ; IMMEDIATE ( Now we have both types of comments )
 
@@ -13,14 +10,11 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 \ Numeric output
 
 
-: RECURSE HIDE ; IMMEDIATE
-
 
 : TRUE FFFFFFFFFFFFFFFF ;
 : FALSE 0 ;
 : BL 20 ;
 : SPACE BL EMIT ;
-: CR 0D EMIT 0A EMIT ;
 
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
@@ -109,5 +103,13 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND . . ;
 : .S ( x * i -- ) DEPTH IF BEGIN DEPTH 0> WHILE CR . REPEAT ELSE ." EMPTY " THEN ;
 
-: HELLO ." Hello, World!" CR ;
-HELLO
+
+: s+   ( u -- ) 48 C, 83 C, C5 C, C, ; \ addq $u, %rbp
+: s-   ( u -- ) 48 C, 83 C, ED C, C, ; \ subq $u, %rbp
+
+: >reg ( u r -- ) 48 C, 89 C, 45 OR C, C, ; \ movq u(%rbp), reg
+: reg> ( u r -- ) 48 C, 8B C, 45 OR C, C, ; \ movq reg, u(%rbp)
+: reg>reg ( r1 r2 -- ) 48 C, 89 C, ; \ movq reg1, reg2
+
+: TEST [ HERE . ] [ 00 00 >reg 00 0F reg> ] ;
+

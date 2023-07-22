@@ -470,7 +470,7 @@ _LITERAL: # ( -- ) %rax : x
         ret
 
 
-DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
+DEFINE_WORD Colon, ":"          # ( "<spaces>ccc<space>" -- )
         movq    last_def, %rax
         movq    curr_def, %rdi
         movq    %rdi, last_def  # Update last_def
@@ -488,15 +488,26 @@ DEFINE_WORD HEAD, "HEAD"        # ( "<spaces>ccc<space>" -- ) Add header for ccc
         stosb                   # Put size
         repe    movsb           # Put name
 
+        decq    state           # Enter compilation mode
+
         movq    %rdi, curr_def
         ret
 
 
-DEFINE_WORD HIDE, "HIDE", # ( -- )
-        # Interpretation: toggle the visibility flag of the last definition
-        movq    last_def, %rdi
-        xorb    $FLAG_HIDDEN, 8(%rdi)
+DEFINE_WORD Semi, ";", FLAG_IMM
+        movq    curr_def, %rdi
+        movb    $0xc3, (%rdi)   # Compile a ret instruction
+        incq    curr_def
+        call    xt_RECURSE      # Make the word visible
+        incq    state           # Exit compilation mode
         ret
+
+
+DEFINE_WORD RECURSE, "RECURSE", FLAG_IMM
+        movq    last_def, %rdi
+        andb    $(~FLAG_HIDDEN), 8(%rdi)
+        ret
+
 
 
 DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
@@ -737,6 +748,7 @@ _NUMBER: # ( rdi:c-addr rdx:u -- rax:u rbx:flag ) Parse hex number
 ## Interpreter
 
 DEFINE_WORD BYE, "BYE"
+        call    xt_CR
         movq    $SYS_EXIT, %rax
         movq    $EXIT_SUCCESS, %rdi
         syscall
