@@ -168,8 +168,9 @@ DEFINE_WORD SZero, "S0"         # ( -- addr )
 
 
 DEFINE_WORD SPAt, "SP@"         # ( -- addr )
-        DPUSH   %r8
+        movq    %r8, %rax
         movq    %rbp, %r8
+        DPUSH   %rax
         ret
 
 

@@ -7,7 +7,6 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 
 : RECURSE HIDE ; IMMEDIATE
 
-
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
 : PAD   (   -- addr ) SP@ 100 + ;
@@ -19,44 +18,28 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 : SPACE 20 . ;
 : CR 0D EMIT 0A EMIT ;
 
+: branch,  ( C: -- ori ) ( -- )
+    E9 C, HERE 99 C, 99 C, 99 C, 99 C, ; \ JMP rel32
 
-: AHEAD ( C: -- ori ) ( -- )
-    E9 C,                   \ JMP rel32
-    HERE                    \ ori
-    99 C, 99 C, 99 C, 99 C, \ rel32
-; IMMEDIATE
-
-: IF ( C: -- ori ) ( x -- )
+: branch0, ( C: -- ori ) ( x -- )
     4D C, 85 C, C0 C,       \ TEST %r8, %r8
     4C C, 8B C, 45 C, 00 C, \ MOV (%rbp), %r8
     48 C, 8D C, 6D C, 08 C, \ LEA 8(%rbp), %rbp
     0F C, 84 C,             \ JZ rel32
     HERE
     99 C, 99 C, 99 C, 99 C, \ rel32
-; IMMEDIATE
+;
 
-: THEN ( C: ori -- )
+: resolve, ( C: ori -- ) ( -- )
     DUP HERE SWAP - 4 - ( ori rel32 )
     SWAP H! \ write rel32 to ori
-; IMMEDIATE
+;
 
-: ELSE ( C: ori1 -- ori2 ) ( -- )
-    >R
-
-    E9 C,                   \ JMP rel32
-    HERE                    \ ori2
-    99 C, 99 C, 99 C, 99 C, \ rel32
-
-    R>
-
-    DUP HERE SWAP - 4 - ( ori2 ori1 rel32 )
-    SWAP H! \ write rel32 to ori1
-; IMMEDIATE
-
-
-: BEGIN ( C: -- dest ) ( -- )
-    HERE
-; IMMEDIATE
+: AHEAD ( C:      -- ori  ) (   --   )  branch,               ; IMMEDIATE
+: IF    ( C:      -- ori  ) ( x --   )  branch0,              ; IMMEDIATE
+: ELSE  ( C: ori1 -- ori2 ) (   --   ) >R branch, R> resolve, ; IMMEDIATE
+: THEN  ( C: ori  --      ) (   --   ) resolve,               ; IMMEDIATE
+: BEGIN ( C:      -- dest ) (   --   ) HERE                   ; IMMEDIATE
 
 : AGAIN ( C: dest -- ) ( -- )
     E9 C,                   \ JMP rel32
@@ -158,3 +141,5 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
     POSTPONE THEN
 ; IMMEDIATE
 
+: HELLO CR ." Hello, World!" CR ;
+HELLO
