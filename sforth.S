@@ -1,5 +1,5 @@
 ### Scouarn Forth
-# Non standard bootstrap system
+# Bootstrap system
 
 ## Refs :
 # - https://compilercrim.es/bootstrap/miniforth/#parsing
@@ -40,6 +40,10 @@
 
 
 ## Data stack
+
+# %rbp: data stack pointer
+# %r8:  top of the stack
+
         .bss
 dstack_end:
         .skip   DSTACK_SZ
@@ -67,8 +71,9 @@ rstack_init:    .quad 0
         .globl _start
 _start:
         cld
+        xorq    %r8, %r8
+        movq    $dstack_start, %rbp        # Data stack
         movq    %rsp, rstack_init          # Return stack
-        movq    $dstack_start, %rbp        # Data stack pointer
         jmp     xt_QUIT                    # No return
 
 
@@ -109,195 +114,110 @@ DEFINE_WORD \label, \name, \flags
 ## Stack manipulation
 
 DEFINE_WORD DROP, "DROP"        # ( x -- )
-        leaq    8(%rbp), %rbp
+        DPOP    %r8
         ret
 
 
 DEFINE_WORD NIP, "NIP"          # ( x1 x2 -- x2 )
-        DPOP    %rax
-        movq    %rax, (%rbp)
+        addq    $8, %rbp
         ret
 
 
 DEFINE_WORD DUP, "DUP"          # ( x -- x x )
-        movq    (%rbp), %rax
-        DPUSH   %rax
+        DPUSH   %r8
         ret
 
 
 DEFINE_WORD SWAP, "SWAP"        # ( x1 x2 -- x2 x1 )
-        movq    8(%rbp), %rax   # x1
-        movq    0(%rbp), %rbx   # x2
-        movq    %rbx, 8(%rbp)   # x2
-        movq    %rax, 0(%rbp)   # x1
+        xchg    %r8, (%rbp)
         ret
 
 
 DEFINE_WORD OVER, "OVER"        # ( x1 x2 -- x1 x2 x1 )
-        movq    8(%rbp), %rax
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD ROT, "ROT"          # ( x1 x2 x3 -- x2 x3 x1 )
-        movq    16(%rbp), %rax  # x1
-        movq     8(%rbp), %rbx  # x2
-        movq     0(%rbp), %rcx  # x3
-        movq    %rbx, 16(%rbp)  # x2
-        movq    %rcx,  8(%rbp)  # x3
-        movq    %rax,  0(%rbp)  # x1
-        ret
-
-
-DEFINE_WORD MinusROT, "-ROT"    # ( x1 x2 x3 -- x3 x1 x2 )
-        movq    16(%rbp), %rax  # x1
-        movq     8(%rbp), %rbx  # x2
-        movq     0(%rbp), %rcx  # x3
-        movq    %rcx, 16(%rbp)  # x3
-        movq    %rax,  8(%rbp)  # x1
-        movq    %rbx,  0(%rbp)  # x2
-        ret
-
-
-DEFINE_WORD TwoDROP, "2DROP"    # ( x1 x2 -- )
-        leaq    16(%rbp), %rbp
-        ret
-
-
-DEFINE_WORD TwoDUP, "2DUP"      # ( x1 x2 -- x1 x2 x1 x2 )
-        movq    8(%rbp), %rax   # x1
-        movq    0(%rbp), %rbx   # x2
-        DPUSH   %rax
-        DPUSH   %rbx
-        ret
-
-
-DEFINE_WORD TwoSWAP, "2SWAP"    # ( x1 x2 x3 x4 -- x3 x4 x1 x2 )
-        movq    24(%rbp), %rax  # x1
-        movq    16(%rbp), %rbx  # x2
-        movq     8(%rbp), %rcx  # x3
-        movq     0(%rbp), %rdx  # x4
-        movq    %rcx, 24(%rbp)  # x3
-        movq    %rdx, 16(%rbp)  # x4
-        movq    %rax,  8(%rbp)  # x1
-        movq    %rbx,  0(%rbp)  # x2
-        ret
-
-
-DEFINE_WORD QuesDUP, "?DUP"     # ( x -- 0 | x x )
-        movq    (%rbp), %rax    # x
-        test    %rax, %rax
-        jz      .Lquesdup
-        DPUSH   %rax
-.Lquesdup:
+        movq    (%rbp), %rax
+        DPUSH   %r8
+        movq    %rax, %r8
         ret
 
 
 DEFINE_WORD SupR, ">R"          # ( x -- ) ( R: -- x )
         popq    %rax            # Return addr
-        DPOP    %rbx            # x
-        pushq   %rbx
+        movq    %r8, %rbx       # x
+        DPOP    %r8
+        pushq   %rbx            # x
         jmp    *%rax            # Ret
 
 
 DEFINE_WORD RSup, "R>"          # ( -- x ) ( R: x -- )
         popq    %rax            # Return addr
-        popq    %rbx            # x
-        DPUSH   %rbx
+        DPUSH   %r8
+        popq    %r8             # x
         jmp    *%rax            # Ret
 
 
 DEFINE_WORD RAt, "R@"           # ( -- x ) ( R: x -- x )
-        movq    8(%rsp), %rax   # x
-        DPUSH   %rax
+        DPUSH   %r8
+        movq    8(%rsp), %r8    # x
         ret
 
 
 DEFINE_WORD SZero, "S0"         # ( -- addr )
-        DPUSH   $dstack_start
+        DPUSH   %r8
+        movq    $dstack_start, %r8
         ret
 
 
 DEFINE_WORD SPAt, "SP@"         # ( -- addr )
-        mov     %rbp, %rax
-        DPUSH   %rax
+        DPUSH   %r8
+        movq    %rbp, %r8
         ret
 
 
 ## Memory
 
 DEFINE_WORD At, "@"             # ( addr -- x )
-        DPOP    %rax
-        movq    (%rax), %rax
-        DPUSH   %rax
+        movq    (%r8), %r8
         ret
 
 
 DEFINE_WORD Bang, "!"           # ( x addr -- )
-        DPOP    %rax            # addr
-        DPOP    %rbx            # x
-        movq    %rbx, (%rax)
+        DPOP    %rax            # x
+        movq    %rax, (%r8)
+        DPOP    %r8
         ret
 
 
 DEFINE_WORD HBang, "H!"         # ( x addr -- ) Write half cell
-        DPOP    %rax            # addr
-        DPOP    %rbx            # x
-        movl    %ebx, (%rax)
+        DPOP    %rax            # x
+        movl    %eax, (%r8)
+        DPOP    %r8
         ret
 
 
 DEFINE_WORD PlusBang, "+!"      # ( x addr -- )
-        DPOP    %rax            # addr
-        DPOP    %rbx            # x
-        addq    %rbx, (%rax)
-        ret
-
-
-DEFINE_WORD MinusBang, "-!"     # ( x addr -- )
-        DPOP    %rax            # addr
-        DPOP    %rbx            # x
-        subq    %rbx, (%rax)
-        ret
-
-
-DEFINE_WORD CELLPlus, "CELL+"   # ( c-addr1 -- c-addr2 )
-        addq    $8, (%rbp)
-        ret
-
-
-DEFINE_WORD CELLS, "CELLS"      # ( c-addr1 -- c-addr2 )
-        shlq    $3, (%rbp)
+        DPOP    %rax            # x
+        addq    %rax, (%r8)
+        DPOP    %r8
         ret
 
 
 DEFINE_WORD CAt, "C@"           # ( c-addr -- c )
-        DPOP    %rax            # c-addr
-        movzxb  (%rax), %rax    # c
-        DPUSH   %rax
+        movzxb  (%r8), %r8    # c
         ret
-
-
-DEFINE_WORD CBang, "C!"         # ( char c-addr -- )
-        DPOP    %rax            # c-addr
-        DPOP    %rbx            # char
-        movb    %bl, (%rax)
-        ret
-
-
-DEFINE_WORD CHARS, "CHARS"      # ( c-addr1 -- c-addr2 )
-        ret                     # NOP
 
 
 DEFINE_WORD CHARPlus, "CHAR+"   # ( c-addr1 -- c-addr2 )
-        incq    (%rbp)
+        incq    %r8
         ret
 
 
 DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
-        DPOP    %rcx            # u
-        DPOP    %rdi            # add2
-        DPOP    %rsi            # add1
+        movq    %r8, %rcx       # u
+        DPOP    %r8
+        movq    %r8, %rdi       # addr2
+        DPOP    %r8
+        movq    %r8, %rsi       # addr1
+        DPOP    %r8
         repe    movsb
         ret
 
@@ -305,304 +225,102 @@ DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
 ## Arithmetic
 
 DEFINE_WORD Plus, "+"           # ( n1 | u1 n2 | u2 -- n3 | u3 )
-        DPOP    %rax
-        addq    %rax, (%rbp)
+        addq    (%rbp), %r8
+        leaq    8(%rbp), %rbp
         ret
 
 
 DEFINE_WORD Minus, "-"          # ( n1 | u1 n2 | u2 -- n3 | u3 )
-        DPOP    %rax
-        subq    %rax, (%rbp)
-        ret
-
-
-DEFINE_WORD NEGATE, "NEGATE"    # ( n1 -- n2 )
-        negq    (%rbp)
+        subq    (%rbp), %r8
+        leaq    8(%rbp), %rbp
+        negq    %r8
         ret
 
 
 DEFINE_WORD OnePlus, "1+"       # ( n1 | u1 -- n2 | u2 )
-        incq    (%rbp)
+        incq    %r8
         ret
 
 
 DEFINE_WORD OneMinus, "1-"      # ( n1 | u1 -- n2 | u2 )
-        decq    (%rbp)
-        ret
-
-
-DEFINE_WORD Star, "*"           # ( n1 n2 -- n3 )
-        DPOP    %rcx            # n2
-        DPOP    %rax            # n1
-        xorq    %rdx, %rdx
-        imul    %rcx
-        DPUSH   %rax            # n3
-        ret
-
-
-DEFINE_WORD MStar, "M*"         # ( n1 n2 -- d )
-        DPOP    %rcx            # n2
-        DPOP    %rax            # n1
-        xorq    %rdx, %rdx
-        imul    %rcx
-        DPUSH   %rax            # d_lo
-        DPUSH   %rdx            # d_hi
+        decq    %r8
         ret
 
 
 DEFINE_WORD SlashMOD, "/MOD"    # ( n1 n2 -- rem quot )
-        DPOP    %rcx            # n1
-        DPOP    %rax            # n2
+        movq    (%rbp), %rax    # n1
         xorq    %rdx, %rdx
-        idiv    %rcx            # %rax := quotient, %rdx := rem
-        DPUSH   %rdx            # rem
-        DPUSH   %rax            # quot
-        ret
-
-
-DEFINE_WORD ABS, "ABS"          # ( n -- u )
-        # https://stackoverflow.com/questions/2639173/x86-assembly-abs-implementation
-        # u = ( n ^ s ) - s     Where s = ( n > 0 ) = n >> 63
-        DPOP    %rax            # n
-        movq    %rax, %rbx
-        sarq    $63,  %rbx      # s
-        xorq    %rbx, %rax      # n ^ s
-        subq    %rbx, %rax      # (n^s) - s
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD MAX, "MAX", # ( n1 n2 -- n3 )
-        DPOP    %rax            # n2
-        DPOP    %rbx            # n1
-        cmpq    %rbx, %rax
-        jg      .Lmax_end
-        movq    %rbx, %rax
-.Lmax_end:
-        DPUSH   %rax            # n3
+        idiv    %r8             # %rax := quotient, %rdx := rem
+        movq    %rax, %r8       # quot
+        movq    %rdx, (%rbp)    # rem
         ret
 
 
 # Logical
 
 DEFINE_WORD INVERT, "INVERT"    # ( x1 -- x2 )
-        notq    (%rbp)
+        notq    %r8
         ret
 
 
 DEFINE_WORD AND, "AND"          # ( x1 x2 -- x3 )
-        DPOP    %rax            # x2
-        andq    %rax, (%rbp)
+        andq    (%rbp), %r8
+        leaq    8(%rbp), %rbp
         ret
 
 
+
 DEFINE_WORD OR, "OR"            # ( x1 x2 -- x3 )
-        DPOP    %rax            # x2
-        orq     %rax, (%rbp)
+        orq     (%rbp), %r8
+        leaq    8(%rbp), %rbp
         ret
 
 
 DEFINE_WORD XOR, "XOR"          # ( x1 x2 -- x3 )
-        DPOP    %rax            # x2
-        xorq    %rax, (%rbp)
+        xorq    (%rbp), %r8
+        leaq    8(%rbp), %rbp
         ret
 
 
 # Comparisons
 
-DEFINE_WORD ZeroEq, "0="        # ( n | u -- flag )
-        DPOP    %rax            # n
-        test    %rax, %rax
-        setnz   %al             # if      0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if not 0  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD ZeroInfSup, "0<>"   # ( n | u -- flag )
-        DPOP    %rax            # n
-        test    %rax, %rax
-        setz    %al             # if not 0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if     0  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
 DEFINE_WORD ZeroSup, "0>"       # ( n -- flag )
-        DPOP    %rax            # n
-        cmp     $0, %rax
+        cmp     $0, %r8
         setng   %al             # if <= 0 then 1 - 1 = 0  = FALSE
         dec     %al             # if >  0 then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
+        movsx   %al, %r8        # Sign extend
         ret
 
-
-DEFINE_WORD ZeroInf, "0<"       # ( n -- flag )
-        DPOP    %rax            # n
-        cmp     $0, %rax
-        setnl   %al             # if >= 0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if <  0 then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD ZeroInfEq, "0<="    # ( n -- flag )
-        DPOP    %rax            # n
-        cmp     $0, %rax
-        setnle  %al             # if >   0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if <=  0 then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD ZeroSupEq, "0>="       # ( n -- flag )
-        DPOP    %rax            # n
-        cmp     $0, %rax
-        setnge  %al             # if <  0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if >= 0 then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD Eq, "="             # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setne   %al             # if neq then 1 - 1 = 0  = FALSE
-        dec     %al             # if eq  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD InfSup, "<>"        # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        sete    %al             # if eq  then 1 - 1 = 0  = FALSE
-        dec     %al             # if neq then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD Inf, "<"            # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setnl   %al             # if >= then 1 - 1 = 0  = FALSE
-        dec     %al             # if <  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD Sup, ">"            # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setng   %al             # if <= then 1 - 1 = 0  = FALSE
-        dec     %al             # if >  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD InfEq, "<="         # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setnle  %al             # if >  then 1 - 1 = 0  = FALSE
-        dec     %al             # if <= then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD SupEq, ">="         # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setnge  %al             # if <  then 1 - 1 = 0  = FALSE
-        dec     %al             # if >= then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD UInf, "U<"          # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setnb   %al             # if >= then 1 - 1 = 0  = FALSE
-        dec     %al             # if <  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD USup, "U>"          # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setna   %al             # if <= then 1 - 1 = 0  = FALSE
-        dec     %al             # if >  then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD UInfEq, "U<="       # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setnbe  %al             # if >  then 1 - 1 = 0  = FALSE
-        dec     %al             # if <= then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
-
-
-DEFINE_WORD USupEq, "U>="       # ( n1 | u1  n2 | u2 -- flag )
-        DPOP    %rbx            # n2
-        DPOP    %rax            # n1
-        cmp     %rbx, %rax
-        setnae  %al             # if <  then 1 - 1 = 0  = FALSE
-        dec     %al             # if >= then 0 - 1 = -1 = TRUE
-        movsx   %al, %rax       # Sign extend
-        DPUSH   %rax
-        ret
 
 
 ## IO
 
 DEFINE_WORD EMIT, "EMIT"        # ( char -- )
-        movq    $SYS_WRITE, %rax
-        movq    $STDOUT,    %rdi
-        movq    %rbp,       %rsi
-        movq    $1,         %rdx
+        movq    %r8, %rax
+        DPOP    %r8
+_EMIT:  # %al:char
+        movb    %al, .Lemit_buf
+        movq    $SYS_WRITE,  %rax
+        movq    $STDOUT,     %rdi
+        movq    $.Lemit_buf, %rsi
+        movq    $1,          %rdx
         syscall
-        addq    $8, %rbp        # Drop
         ret
+.Lemit_buf: .byte 0
 
 
 DEFINE_WORD CR, "CR"            # ( -- )
-        DPUSH   $'\r'
-        call    xt_EMIT
-        DPUSH   $'\n'
-        call    xt_EMIT
+        movb    $'\r', %al
+        call    _EMIT
+        movb    $'\n', %al
+        call    _EMIT
         ret
 
 
 DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
-        DPOP    %rdx
-        DPOP    %rsi
+        movq    %r8, %rdx
+        movq    (%rbp), %rsi
+        addq    $16, %rbp
 _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
         movq    $SYS_WRITE, %rax
         movq    $STDOUT, %rdi
@@ -611,18 +329,21 @@ _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
 
 
 DEFINE_WORD KEY, "KEY"          # ( -- char )
-        DPUSH   $0 # Alloc
-        movq    $SYS_READ, %rax
-        movq    $STDIN,    %rdi
-        movq    %rbp,      %rsi
-        movq    $1,        %rdx
+        DPUSH   %r8
+        DPUSH   $0,             # Alloc
+        movq    $SYS_READ,  %rax
+        movq    $STDIN,     %rdi
+        movq    %rbp,       %rsi
+        movq    $1,         %rdx
         syscall
+        DPOP    %r8
         ret
 
 
 DEFINE_WORD Dot, "."            # ( u -- ) Print hex unsigned with leading 0s
         movq    $16, %rcx
-        DPOP    %rax
+        movq    %r8, %rax
+        DPOP    %r8
 .Ldot_loop:
         rolq    $4, %rax
         movq    %rax, %rbx
@@ -632,45 +353,50 @@ DEFINE_WORD Dot, "."            # ( u -- ) Print hex unsigned with leading 0s
         jbe     .Ldot_emit
         addb    $('A'-'0'-10), %bl
 .Ldot_emit:
-        DPUSH   %rbx
         push    %rax
         push    %rcx
-        call    xt_EMIT
+        movb    %bl, %al
+        call    _EMIT
         pop     %rcx
         pop     %rax
         dec     %rcx
         jnz     .Ldot_loop
 .Ldot_end:
-        DPUSH   $' '
-        call    xt_EMIT
+        movb    $' ', %al
+        call    _EMIT
         ret
 
 
 # Compilation
 
 DEFINE_WORD CONST_FLAG_IMM, "FLAG-IMM"
-        DPUSH   $FLAG_IMM
+        DPUSH   %r8
+        movq    $FLAG_IMM, %r8
         ret
 
 
 DEFINE_WORD CONST_FLAG_HIDDEN, "FLAG-HIDDEN"
-        DPUSH   $FLAG_HIDDEN
+        DPUSH   %r8
+        movq    $FLAG_HIDDEN, %r8
         ret
 
 
 DEFINE_WORD CP, "CP"            # ( -- addr )
-        DPUSH   $curr_def
+        DPUSH   %r8
+        movq    $curr_def, %r8
         ret
 curr_def: .quad user_dict
 
 
 DEFINE_WORD LATEST, "LATEST"  # ( -- addr )
-        DPUSH   $last_def
+        DPUSH   %r8
+        movq    $last_def, %r8
         ret
 
 
 DEFINE_WORD STATE, "STATE"
-        DPUSH   $state
+        DPUSH   %r8
+        movq    $state, %r8
         ret
 state: .quad 0
 
@@ -686,23 +412,25 @@ DEFINE_WORD Rsq, "]"
 
 
 DEFINE_WORD Comma, ","          # ( x -- )
-        DPOP    %rax
         movq    curr_def, %rdi
-        movq    %rax, (%rdi)
+        movq    %r8, (%rdi)
         addq    $8, curr_def
+        DPOP    %r8
         ret
 
 
 DEFINE_WORD CComma, "C,"        # ( char -- )
-        DPOP    %rax
         movq    curr_def, %rdi
+        movq    %r8, %rax
+        DPOP    %r8
         movb    %al, (%rdi)
         incq    curr_def
         ret
 
 
 DEFINE_WORD COMPILEComma, "COMPILE," # ( xt -- )
-        DPOP    %rax # xt
+        movq    %r8, %rax # xt
+        DPOP    %r8
 _COMPILE: # ( -- ) %rax : xt
         # Compile: call REL
         # Where REL is xt relative to the next instruction:
@@ -717,23 +445,27 @@ _COMPILE: # ( -- ) %rax : xt
 
 
 DEFINE_WORD LITERAL, "LITERAL", FLAG_IMM # ( x -- )
-        DPOP    %rax
+        movq    %r8, %rax # x
+        DPOP    %r8
 _LITERAL: # ( -- ) %rax : x
         movq    curr_def, %rdx
+
+        # TODO: use sign extended for more compact code
 
         # Compile: leaq -8(%rbp), %rbp
         # 48 8d 6d f8
         movl    $0xf86d8d48, (%rdx)
 
-        # FIXME: doesn't work for words that don't fit on 32bits
+        # Compile: movq %r8, (%rbp)
+        # 4c 89 45 00
+        movl    $0x0045894c, 4(%rdx)
 
-        # Compile: movq $IMM, (%rbp)
-        # Where IMM is what's in %eax, sign extended
-        # 48 c7 45 00 xx xx xx xx
-        movl    $0x0045c748, 4(%rdx)
-        movl    %eax, 8(%rdx)
+        # Compile: movq $IMM, %r8
+        # 49 b8 xx xx xx xx xx xx xx xx
+        movw    $0xb849, 8(%rdx)
+        movq    %rax, 10(%rdx)
 
-        addq    $12, curr_def
+        addq    $18, curr_def
         ret
 
 
@@ -776,15 +508,17 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 ## Parsing
 
 DEFINE_WORD SupIN, ">IN"
-        DPUSH   $source_idx
+        DPUSH   %r8
+        movq    $source_idx, %r8
         ret
 source_idx: .quad 0
 
 
 DEFINE_WORD SOURCE, "SOURCE" # ( -- c-addr u )
-        DPUSH   $source_buf
-        movq    source_cnt, %rax
-        DPUSH   %rax
+        DPUSH   %r8
+        movq    $source_buf, %r8
+        DPUSH   %r8
+        movq    source_cnt, %r8
         ret
 source_cnt: .quad 0 # Size of the current line
 source_buf:
@@ -794,10 +528,11 @@ source_buf:
 
 _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         # %rbx := Number of non special chars read (one newline -> 1)
-        DPUSH   $'>'            # Prompt
-        call    xt_EMIT
-        DPUSH   $' '
-        call    xt_EMIT
+
+        movb    $'>', %al       # Prompt TODO
+        call    _EMIT
+        movb    $' ', %al
+        call    _EMIT
 
         xorq    %rbx, %rbx      # Total number of chars read
         movq    $source_buf, %rdi
@@ -806,7 +541,8 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         push    %rdi            # Read one char
         call    xt_KEY
         pop     %rdi
-        DPOP    %rax
+        movq    %r8, %rax
+        DPOP    %r8
 
         test    %al, %al        # Stop on zero (nothing read)
         jz      .Lrefill_end
@@ -823,17 +559,17 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         je      .Lrefill_loop
         dec     %rdi
         push    %rdi
-        DPUSH   $'\b'
-        call    xt_EMIT
-        DPUSH   $' '
-        call    xt_EMIT
-        DPUSH   $'\b'
-        call    xt_EMIT
+        movb    $'\b', %al
+        call    _EMIT
+        movb    $' ', %al
+        call    _EMIT
+        movb    $'\b', %al
+        call    _EMIT
         pop     %rdi
         jmp     .Lrefill_loop
 .Lrefill_not_del:
 
-        cmpb    $0x1b, %al      # Ignore escape printable
+        cmpb    $0x1b, %al      # Ignore escape
         je      .Lrefill_loop
 
         incq    %rbx
@@ -846,8 +582,7 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         stosb                   # Add to buffer
 
         push    %rdi
-        DPUSH   %rax
-        call    xt_EMIT         # Echo
+        call    _EMIT         # Echo
         pop     %rdi
 
         cmpq    $(source_buf+SOURCE_SZ), %rdi
@@ -933,10 +668,10 @@ _PARSE:  # ( bl:char "ccc<char>" -- rdi:c-addr rcx:u )
 
 
 DEFINE_WORD PARSE "PARSE"       # ( char "ccc<char>" -- c-addr u )
-        DPOP    %rbx
+        movq    %r8, %rbx
         call    _PARSE
-        DPUSH   %rdi
-        DPUSH   %rcx
+        movq    %rcx, %r8       # u
+        DPUSH   %rdi            # c-addr
         ret
 
 
@@ -961,8 +696,9 @@ _PARSE_NAME: # ( "<spaces>ccc<space>" -- rdi:c-addr rcx:u )
 
 DEFINE_WORD PARSEMinusNAME "PARSE-NAME" # ( "<spaces>ccc<space>" -- c-addr u )
         call    _PARSE_NAME
-        DPUSH   %rdi
-        DPUSH   %rcx
+        DPUSH   %r8
+        DPUSH   %rdi            # c-addr
+        movq    %rcx, %r8       # u
         ret
 
 
@@ -1012,7 +748,8 @@ DEFINE_WORD QUIT, "QUIT"
         call    _REFILL
         test    %rbx, %rbx
         jz      xt_BYE                  # No return
-        DPUSH   $' '
+        DPUSH   %r8
+        movq    $' ', %r8
         call    xt_EMIT
         call    xt_INTERPRET
 
@@ -1072,11 +809,11 @@ _FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )
 
 
 DEFINE_WORD FIND, "FIND"        # ( c-addr u -- 0|nt xt )
-        DPOP    %rax
-        DPOP    %rsi
+        movq    %r8, %rax
+        movq    (%rbp), %rsi
         call    _FIND
-        DPUSH   %rbx            # nt
-        DPUSH   %rdi            # xt
+        movq    %rdi, %r8       # xt
+        movq    %rbx, (%rbp)    # nt
         ret
 
 
@@ -1130,7 +867,8 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         jmp     .Linterpret_loop
 
 .Linterpret_exec_number:
-        DPUSH   %rax            # Push number
+        DPUSH   %r8
+        movq    %rax, %r8       # Push number
         jmp     .Linterpret_loop
 
 

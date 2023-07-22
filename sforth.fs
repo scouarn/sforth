@@ -1,12 +1,10 @@
 HEAD : ] HEAD ] [ C3 C, HIDE
 HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 
-: \ 0A PARSE 2DROP ; IMMEDIATE \ Now we can comment
-: ( 29 PARSE 2DROP ; IMMEDIATE ( Now we have both types of comments )
+: \ 0A PARSE DROP DROP ; IMMEDIATE \ Now we can comment
+: ( 29 PARSE DROP DROP ; IMMEDIATE ( Now we have both types of comments )
 
 
-\ : IMMEDIATE ( -- ) LATEST @ 8 + DUP C@ FLAG-IMM    OR SWAP C! ;
-\ : RECURSE   ( -- ) LATEST @ 8 + DUP C@ FLAG-HIDDEN OR SWAP C! ; IMMEDIATE
 : RECURSE HIDE ; IMMEDIATE
 
 
@@ -29,9 +27,9 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 ; IMMEDIATE
 
 : IF ( C: -- ori ) ( x -- )
-    48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
-    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
-    48 C, 85 C, C0 C,       \ TEST %rax, %rax   TEST r/m64, r64
+    4D C, 85 C, C0 C,       \ TEST %r8, %r8
+    4C C, 8B C, 45 C, 00 C, \ MOV (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C, \ LEA 8(%rbp), %rbp
     0F C, 84 C,             \ JZ rel32
     HERE
     99 C, 99 C, 99 C, 99 C, \ rel32
@@ -67,20 +65,19 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
 ; IMMEDIATE
 
 : UNTIL ( C: dest -- ) ( x -- )
-    48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
-    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
-    48 C, 85 C, C0 C,       \ TEST %rax, %rax   TEST r/m64, r64
+    4D C, 85 C, C0 C,       \ TEST %r8, %r8
+    4C C, 8B C, 45 C, 00 C, \ MOV (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C, \ LEA 8(%rbp), %rbp
     0F C, 84 C,             \ JZ rel32
-
     HERE 4 + -  ( rel32 )
     HERE H!     \ write rel32
     4 CP +!
 ; IMMEDIATE
 
 : WHILE ( C: dest -- orig dest ) ( x -- )
-    48 C, 8B C, 45 C, 00 C, \ MOV (%rbp), %rax  MOV r64, r/m64
-    48 C, 83 C, C5 C, 08 C, \ ADD $8, %rbp      SUB r/m64, imm8
-    48 C, 85 C, C0 C,       \ TEST %rax, %rax   TEST r/m64, r64
+    4D C, 85 C, C0 C,       \ TEST %r8, %r8
+    4C C, 8B C, 45 C, 00 C, \ MOV (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C, \ LEA 8(%rbp), %rbp
     0F C, 84 C,             \ JZ rel32
     HERE SWAP               ( dest -- orig dest )
     99 C, 99 C, 99 C, 99 C, \ rel32
@@ -145,7 +142,7 @@ HEAD ; ] C3 C, HIDE 0 STATE ! [ C3 C, HIDE IMMEDIATE
     ALLOT                   \ Allocate string
     POSTPONE THEN
     R@ POSTPONE LITERAL     \ Push c-addr2
-    R> 1+ SWAP ( c-addr1 c-addr3 u ) MOVE \ Copy string data
+    R> CHAR+ SWAP ( c-addr1 c-addr3 u ) MOVE \ Copy string data
 ; IMMEDIATE
 
 : S" ( C: "ccc<quote>" -- ) ( -- c-addr u ) [CHAR] " PARSE POSTPONE SLITERAL ; IMMEDIATE
