@@ -10,12 +10,6 @@
 \ Numeric output
 
 
-
-: TRUE FFFFFFFFFFFFFFFF ;
-: FALSE 0 ;
-: BL 20 ;
-: SPACE BL EMIT ;
-
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
 : PAD   (   -- addr ) SP@ 100 + ;
@@ -87,7 +81,7 @@
     R> CHAR+ R> ( c-addr1 c-addr3 u ) MOVE \ Copy string data
 ; IMMEDIATE
 
-: ABORT" ( C: "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
+: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
     POSTPONE IF
     POSTPONE ."
     POSTPONE TYPE
@@ -111,5 +105,11 @@
 : reg> ( u r -- ) 48 C, 8B C, 45 OR C, C, ; \ movq reg, u(%rbp)
 : reg>reg ( r1 r2 -- ) 48 C, 89 C, ; \ movq reg1, reg2
 
-: TEST [ HERE . ] [ 00 00 >reg 00 0F reg> ] ;
+
+: CONSTANT ( x "<spaces>name" -- ) ( -- x ) : POSTPONE LITERAL POSTPONE ; ;
+
+0 1 - CONSTANT TRUE
+0     CONSTANT FALSE
+20    CONSTANT BL
+: SPACE BL EMIT ;
 
