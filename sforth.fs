@@ -1,19 +1,27 @@
-: \ 0A PARSE DROP DROP ; IMMEDIATE \ Now we can comment
-: ( 29 PARSE DROP DROP ; IMMEDIATE ( Now we have both types of comments )
+: \ 0A PARSE DROP DROP ; IMMEDIATE
+: ( 29 PARSE DROP DROP ; IMMEDIATE
 
 \ TODO
+\ DEFER
 \ Primitives / Arithmetic / Comparisons
+\ Double
 \ For loops
 \ CASE
-\ DEFER
-\ CONSTANT / VARIABLE / CREATE / DOES> ...
-\ Numeric output
+\ Numeric output <# # #S #>
+\ Numeric input >NUMBER and standard number parser
+\ ENVIRONMENT?
 
+: / ( x1 x2 -- x3 ) /MOD NIP ;
+: CELL+ 8 + ;
+: CELLS 8 * ;
+: CHARS ;
+: CHAR+ 1+ ;
 
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
 : PAD   (   -- addr ) SP@ 100 + ;
 : COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
+
 
 
 : <resolve ( C: ori      --     ) (   -- ) >R HERE 4 - R@ - R> H! ;
@@ -91,13 +99,6 @@
 ; IMMEDIATE
 
 
-: / ( x1 x2 -- x3 ) /MOD NIP ;
-: DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ TODO: use 2/ 2/ 2/ instead
-: ? ( addr -- ) @ . ;
-: SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND . . ;
-: .S ( x * i -- ) DEPTH IF BEGIN DEPTH 0> WHILE CR . REPEAT ELSE ." EMPTY " THEN ;
-
-
 : docreate ( -- a-addr ) R> 1+ ; \ 1+ to skip the ret
     \ NOTE: The ret is never executed and we return to child's caller
 
@@ -144,26 +145,38 @@
 VARIABLE BASE
 : HEX     ( -- ) 10 BASE ! ;
 : DECIMAL ( -- ) 0A BASE ! ;
-HEX
+DECIMAL
 
-\ Tests
 
-CREATE CR0 .S
-' CR0 >BODY HERE .S
 
-: DOES1 DOES> @ 1 + ; .S
-: DOES2 DOES> @ 2 + ; .S
-CREATE CR1 .S
-CR1 HERE .S
-1 , .S
-CR1 @ .S
-DOES1 .S
-CR1 .S
-DOES2 .S
-CR1 .S
+: ? ( addr -- ) @ . ;
+: NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
+: SEE ( "<spaces>ccc<space>" -- )
+    PARSE-NAME FIND ( xt nt )
+    CR ." prev:   " OVER @ NAME>STRING TYPE
+    CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
+    CR ." xt:     " .
+    CR ." nt:     " .
+;
 
-: WEIRD: CREATE DOES> 1 + DOES> 2 + ; .S
-WEIRD: W1 .S
-' W1 >BODY HERE .S
-W1 HERE 1 + .S
-W1 HERE 2 + .S
+: DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ TODO: use 2/ 2/ 2/ instead
+: .S ( -- )
+    DEPTH IF
+        DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0= UNTIL DROP
+    ELSE
+       CR ." EMPTY "
+    THEN
+;
+
+
+
+: EXECUTE ( i*x xt -- j*x ) [
+    4C C, 89 C, C0 C,       \ mov   %r8, %rax
+    4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C, \ lea   8(%rbp), %rbp
+    FF C, D0 C,             \ call  *%rax
+] ;
+
+: DEFER ( "<spaces>name" -- ) CREATE 0 , DOES> ( i*x -- j*x ) @ EXECUTE ;
+
+

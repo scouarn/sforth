@@ -207,11 +207,6 @@ DEFINE_WORD CAt, "C@"           # ( c-addr -- c )
         ret
 
 
-DEFINE_WORD CHARPlus, "CHAR+"   # ( c-addr1 -- c-addr2 )
-        incq    %r8
-        ret
-
-
 DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
         movq    %r8, %rcx       # u
         DPOP    %r8
@@ -245,6 +240,15 @@ DEFINE_WORD OnePlus, "1+"       # ( n1 | u1 -- n2 | u2 )
 
 DEFINE_WORD OneMinus, "1-"      # ( n1 | u1 -- n2 | u2 )
         decq    %r8
+        ret
+
+
+DEFINE_WORD Star, "*"           # ( n1 n2 -- n3 )
+        movq    (%rbp), %rax    # n1
+        xorq    %rdx, %rdx
+        imul    %r8             # %rax := n1 * n2
+        movq    %rax, %r8       # n3
+        leaq    8(%rbp), %rbp
         ret
 
 
@@ -293,6 +297,13 @@ DEFINE_WORD ZeroSup, "0>"       # ( n -- flag )
         ret
 
 
+DEFINE_WORD ZeroEq, "0="        # ( n -- flag )
+        cmp     $0, %r8
+        setnz   %al             # if <= 0 then 1 - 1 = 0  = FALSE
+        dec     %al             # if >  0 then 0 - 1 = -1 = TRUE
+        movsx   %al, %r8        # Sign extend
+        ret
+
 
 ## IO
 
@@ -320,7 +331,8 @@ DEFINE_WORD CR, "CR"            # ( -- )
 
 DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
         movq    %r8, %rdx
-        movq    (%rbp), %rsi
+        movq    0(%rbp), %rsi
+        movq    8(%rbp), %r8
         addq    $16, %rbp
 _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
         movq    $SYS_WRITE, %rax
@@ -893,7 +905,7 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         pop     %rsi            # c-addr
         call    _TYPE           # Print word
         call    xt_CR
-        jmp     xt_ABORT        # No return
+        call    xt_QUIT         # No return
         ret
 
 .Linterpret_msg:
