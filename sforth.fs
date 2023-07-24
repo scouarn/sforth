@@ -1,9 +1,9 @@
+: DROP [ 4C C, 8B C, 45 C, 00 C, 48 C, 8D C, 6D C, 08 C, ] ;
 : \ 0A PARSE DROP DROP ; IMMEDIATE
 : ( 29 PARSE DROP DROP ; IMMEDIATE
 
 \ TODO
 \ SEE when not found...
-\ DEFER
 \ Memory and stack primitives
 \ Double
 \ For loops
@@ -11,6 +11,47 @@
 \ Numeric output <# # #S #>
 \ Numeric input >NUMBER and standard number parser
 \ ENVIRONMENT?
+
+\ Stack ========================================================================
+
+: sp+ 48 C, 8D C, 6D C, 08 C, ; \ lea    8(%rbp), %rbp
+: sp- 48 C, 8D C, 6D C, F8 C, ; \ lea   -8(%rbp), %rbp
+
+\ TODO how is the reg encoded ?
+\ : >reg ( off reg ) [ ?? C, 8B C, 45 C, C, ] ; \ mov off(%rbp), reg
+\ : reg> ( off reg ) [ ?? C, 89 C, 45 C, C, ] ; \ mov reg, off(%rbp)
+
+\ : DROP ( x  --   ) [ 4C C, 8B C, 45 C, 00 C, sp+ ] ; \ mov (%rbp), %r8
+: DUP  ( x     -- x x      ) [ sp- 4C C, 89 C, 45 C, 00 C, ] ; \ mov %r8, (%rbp)
+: SWAP ( x1 x2 -- x2 x1    ) [ 4C C, 87 C, 45 C, 00 C, ] ; \ xchg %r8, (%rbp)
+: NIP  ( x1 x2   -- x2     ) [ sp+ ] ;
+: OVER ( x1 x2 -- x1 x2 x1 ) [
+    sp- 4C C, 89 C, 45 C, 00 C, \ mov %r8, (%rbp)
+        4C C, 8B C, 45 C, 08 C, \ mov 8(%rbp), %r8
+] ;
+
+: TUCK ( x1 x2   -- x2     ) [
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax
+    4C C, 89 C, 45 C, 00 C, \ mov     %r8, (%rbp)
+    sp-
+    48 C, 89 C, 45 C, 00 C, \ mov     %rax, (%rbp)
+] ;
+
+: ROT  ( x1 x2 x3 -- x2 x3 x1 ) [
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax
+    4C C, 89 C, 45 C, 00 C, \ mov     %r8, (%rbp)
+    4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
+    48 C, 89 C, 45 C, 08 C, \ mov     %rax, 8(%rbp)
+] ;
+
+: -ROT ( x1 x2 x3 -- x2       ) [
+    48 C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %rax
+    4C C, 89 C, 45 C, 08 C, \ mov     %r8, 8(%rbp)
+    4C C, 8B C, 45 C, 00 C, \ mov     (%rbp), %r8
+    48 C, 89 C, 45 C, 00 C, \ mov     %rax, (%rbp)
+] ;
+
+
 
 
 \ Arithmetic ===================================================================
@@ -123,7 +164,7 @@
 
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
-: PAD   (   -- addr ) SP@ 100 + ;
+: PAD   (   -- addr ) SP@ 100 - ;
 : COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
 : 2DROP ( x1 x2 --             ) DROP DROP ;
@@ -306,6 +347,8 @@
     FF C, D0 C,             \ call  *%rax
 ] ;
 
+: EXIT ( -- ) R> ;
+
 : DEFER  (    "<spaces>name" --     ) CREATE 0 , DOES> @ EXECUTE ;
 : DEFER@ (            xt1    -- xt2 ) >BODY @ ;
 : DEFER! (        xt2 xt1    --     ) >BODY ! ;
@@ -332,11 +375,11 @@
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ TODO: use 2/ 2/ 2/ instead
 
 : .S ( -- )
-    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0= UNTIL DROP
+    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR .X 1- DUP 0= UNTIL DROP
     ELSE DEPTH 0= IF ." EMPTY " ELSE ." UNDERFLOW " THEN THEN
 ;
 
-: ? ( addr -- ) @ . ;
+: ? ( addr -- ) @ .X ;
 
 
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
@@ -346,8 +389,8 @@
     PARSE-NAME FIND ( xt nt )
     CR ." prev:   " OVER @ NAME>STRING TYPE
     CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
-    CR ." xt:     " .
-    CR ." nt:     " .
+    CR ." xt:     " .X
+    CR ." nt:     " .X
 ;
 
 : BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux

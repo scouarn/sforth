@@ -113,33 +113,6 @@ DEFINE_WORD \label, \name, \flags
 
 ## Stack manipulation
 
-DEFINE_WORD DROP, "DROP"        # ( x -- )
-        DPOP    %r8
-        ret
-
-
-DEFINE_WORD NIP, "NIP"          # ( x1 x2 -- x2 )
-        addq    $8, %rbp
-        ret
-
-
-DEFINE_WORD DUP, "DUP"          # ( x -- x x )
-        DPUSH   %r8
-        ret
-
-
-DEFINE_WORD SWAP, "SWAP"        # ( x1 x2 -- x2 x1 )
-        xchg    %r8, (%rbp)
-        ret
-
-
-DEFINE_WORD OVER, "OVER"        # ( x1 x2 -- x1 x2 x1 )
-        movq    (%rbp), %rax
-        DPUSH   %r8
-        movq    %rax, %r8
-        ret
-
-
 DEFINE_WORD SupR, ">R"          # ( x -- ) ( R: -- x )
         popq    %rax            # Return addr
         movq    %r8, %rbx       # x
@@ -286,7 +259,7 @@ DEFINE_WORD KEY, "KEY"          # ( -- char )
         ret
 
 
-DEFINE_WORD Dot, "."            # ( u -- ) Print hex unsigned with leading 0s
+DEFINE_WORD DotX, ".X"           # ( u -- ) Print hex unsigned with leading 0s
         movq    $16, %rcx
         movq    %r8, %rax
         DPOP    %r8
@@ -348,12 +321,12 @@ state: .quad 0
 
 
 DEFINE_WORD Lsq, "[", FLAG_IMM
-        incq    state   # State becomes 0 = FALSE
+        movq    $0, state
         ret
 
 
 DEFINE_WORD Rsq, "]"
-        decq    state   # State becomes -1 = TRUE
+        movq    $-1, state
         ret
 
 
