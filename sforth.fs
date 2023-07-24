@@ -14,7 +14,6 @@
 
 \ Arithmetic ===================================================================
 
-
 : + ( n1 | u1 n2 | u2 -- n3 | u3 ) [
     4C C, 03 C, 45 C, 00 C,     \ add   (%rbp), %r8
     48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
@@ -25,6 +24,8 @@
     48 C, 8D C, 6D C, 08 C,     \ lea   0x8(%rbp),%rbp
     49 C, F7 C, D8 C,           \ neg   %r8
 ] ;
+
+: NEGATE ( n1 -- n2 ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
 
 : 1+ ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
 : 1- ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C8 C, ] ; \ dec     %r8
@@ -44,6 +45,30 @@
 
 : /   ( x1 x2 -- x3 ) /MOD NIP  ;
 : MOD ( x1 x2 -- x3 ) /MOD DROP ;
+
+\ Logical ======================================================================
+
+: INVERT ( x1 -- x2 ) [ 49 C, F7 C, D0 C, ] ; \ not %r8
+
+: AND ( x1 x2 -- x3 ) [
+    4C C, 23 C, 45 C, 00 C,     \ and   (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
+] ;
+
+
+: OR ( x1 x2 -- x3 ) [
+    4C C, 0B C, 45 C, 00 C,     \ or    (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
+] ;
+
+
+: XOR ( x1 x2 -- x3 ) [
+    4C C, 33 C, 45 C, 00 C,     \ xor   (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
+] ;
+
+
+\ Comparisons ==================================================================
 
 : =   ( x1 x2 -- flag ) - 0= ;
 

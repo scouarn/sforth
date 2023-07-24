@@ -238,33 +238,6 @@ DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
 
 
 
-
-# Logical
-
-DEFINE_WORD INVERT, "INVERT"    # ( x1 -- x2 )
-        notq    %r8
-        ret
-
-
-DEFINE_WORD AND, "AND"          # ( x1 x2 -- x3 )
-        andq    (%rbp), %r8
-        leaq    8(%rbp), %rbp
-        ret
-
-
-
-DEFINE_WORD OR, "OR"            # ( x1 x2 -- x3 )
-        orq     (%rbp), %r8
-        leaq    8(%rbp), %rbp
-        ret
-
-
-DEFINE_WORD XOR, "XOR"          # ( x1 x2 -- x3 )
-        xorq    (%rbp), %r8
-        leaq    8(%rbp), %rbp
-        ret
-
-
 # Comparisons
 
 DEFINE_WORD ZeroSup, "0>"       # ( n -- flag )
