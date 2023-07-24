@@ -237,47 +237,6 @@ DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
         ret
 
 
-## Arithmetic
-
-DEFINE_WORD Plus, "+"           # ( n1 | u1 n2 | u2 -- n3 | u3 )
-        addq    (%rbp), %r8
-        leaq    8(%rbp), %rbp
-        ret
-
-
-DEFINE_WORD Minus, "-"          # ( n1 | u1 n2 | u2 -- n3 | u3 )
-        subq    (%rbp), %r8
-        leaq    8(%rbp), %rbp
-        negq    %r8
-        ret
-
-
-DEFINE_WORD OnePlus, "1+"       # ( n1 | u1 -- n2 | u2 )
-        incq    %r8
-        ret
-
-
-DEFINE_WORD OneMinus, "1-"      # ( n1 | u1 -- n2 | u2 )
-        decq    %r8
-        ret
-
-
-DEFINE_WORD Star, "*"           # ( n1 n2 -- n3 )
-        movq    (%rbp), %rax    # n1
-        xorq    %rdx, %rdx
-        imul    %r8             # %rax := n1 * n2
-        movq    %rax, %r8       # n3
-        leaq    8(%rbp), %rbp
-        ret
-
-
-DEFINE_WORD SlashMOD, "/MOD"    # ( n1 n2 -- rem quot )
-        movq    (%rbp), %rax    # n1
-        xorq    %rdx, %rdx
-        idiv    %r8             # %rax := quotient, %rdx := rem
-        movq    %rax, %r8       # quot
-        movq    %rdx, (%rbp)    # rem
-        ret
 
 
 # Logical
@@ -924,7 +883,7 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         pop     %rsi            # c-addr
         call    _TYPE           # Print word
         call    xt_CR
-        call    xt_QUIT         # No return
+        call    xt_ABORT        # No return
         ret
 
 .Linterpret_msg:

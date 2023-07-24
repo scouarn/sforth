@@ -12,12 +12,43 @@
 \ ENVIRONMENT?
 
 
-\ Utilities ====================================================================
+\ Arithmetic ===================================================================
+
+
+: + ( n1 | u1 n2 | u2 -- n3 | u3 ) [
+    4C C, 03 C, 45 C, 00 C,     \ add   (%rbp), %r8
+    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
+] ;
+
+: - ( n1 | u1 n2 | u2 -- n3 | u3 ) [
+    4C C, 2B C, 45 C, 00 C,     \ sub   0x0(%rbp),%r8
+    48 C, 8D C, 6D C, 08 C,     \ lea   0x8(%rbp),%rbp
+    49 C, F7 C, D8 C,           \ neg   %r8
+] ;
+
+: 1+ ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
+: 1- ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C8 C, ] ; \ dec     %r8
+
+: * ( n1 n2 -- n3 ) [
+    4C C, 0F C, AF C, 45 C, 00 C,   \ imul  (%rbp), %r8     %r8 := n1 * n2
+    48 C, 8D C, 6D C, 08 C,         \ leaq  8(%rbp), %rbp
+] ;
+
+: /MOD ( n1 n2 -- rem quot ) [
+    48 C, 8B C, 45 C, 00 C,     \ movq  (%rbp), %rax        n1
+    40 C, 00 C, 00 C,           \ cqto
+    49 C, F7 C, F8 C,           \ idiv  %r8
+    49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
+    49 C, 89 C, 55 C, 00 C,     \ movq    %rdx, (%rbp)      rem
+] ;
 
 : /   ( x1 x2 -- x3 ) /MOD NIP  ;
 : MOD ( x1 x2 -- x3 ) /MOD DROP ;
 
 : =   ( x1 x2 -- flag ) - 0= ;
+
+
+\ Utilities ====================================================================
 
 : CELL+ 8 + ;
 : CELLS 8 * ;
@@ -41,8 +72,7 @@
 : branch0  ( C:          -- ori ) ( x -- )
     4D C, 85 C, C0 C,       \ test %r8, %r8
     4C C, 8B C, 45 C, 00 C, \ mov (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C, \ lea 8(%rbp), %rbp
-    \ 48 C, 83 C, C5 C, 08 C, \ add $8, %rbp
+    48 C, 8D C, 6D C, 08 C, \ lea 8(%rbp), %rbp     -> Use lea to keep flags
     0F C, 84 C,             \ jz rel32
     HERE 4 ALLOT            \ rel32
 ;
@@ -56,6 +86,7 @@
 : UNTIL  ( C: dest --          ) ( x -- ) branch0 resolve>          ; IMMEDIATE
 : WHILE  ( C: dest -- ori dest ) ( x -- ) branch0 SWAP              ; IMMEDIATE
 : REPEAT ( C: ori dest --      ) (   -- ) branch  resolve> <resolve ; IMMEDIATE
+
 
 
 \ POSTPONE =====================================================================
@@ -91,13 +122,13 @@
 ; IMMEDIATE
 
 : I ( -- idx ) ( R: lim idx ret -- lim idx ) [
-    48 C, 83 C, ED C, 08 C,       \ lea    -8(%rbp), %rbp
+    48 C, 83 C, ED C, 08 C,       \ sub    $8, %rbp
     4C C, 89 C, 45 C, 00 C,       \ mov    r8, (%rbp)
     4C C, 8B C, 44 C, 24 C, 08 C, \ mov    8(%rsp), %r8
 ] ;
 
 : J ( -- i1 ) ( R: l1 i1 l2 i2 ret -- l1 i1 l2 i2 ret ) [
-    48 C, 83 C, ED C, 08 C,       \ lea    -8(%rbp), %rbp
+    48 C, 83 C, ED C, 08 C,       \ add    $8, %rbp
     4C C, 89 C, 45 C, 00 C,       \ mov    r8, (%rbp)
     4C C, 8B C, 44 C, 24 C, 18 C, \ mov    24(%rsp), %r8
 ] ;
@@ -138,10 +169,9 @@
 : S" ( C: "ccc<quote>" -- ) ( -- c-addr u )
     [CHAR] " PARSE POSTPONE SLITERAL ; IMMEDIATE
 
-: ." ( C: "ccc<quote>" -- ) ( --          )
-    POSTPONE S" POSTPONE TYPE ; IMMEDIATE
-
-: .( (    "ccc<quote>" -- ) ( --          ) [CHAR] ) PARSE TYPE ;
+: ." ( C: "ccc<quote>" -- ) ( -- ) POSTPONE S" ['] TYPE COMPILE, ; IMMEDIATE
+\ FIXME POSTPONE vs ['] XX COMPILE,
+: .( (    "ccc<quote>" -- ) ( -- ) [CHAR] ) PARSE TYPE ;
 
 : C" ( C: "ccc<quote>" -- ) ( -- c-addr   )
     [CHAR] " PARSE >R
@@ -206,7 +236,7 @@
 : EXECUTE ( i*x xt -- j*x ) [
     4C C, 89 C, C0 C,       \ mov   %r8, %rax
     4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C, \ lea   8(%rbp), %rbp
+    48 C, 83 C, C5 C, 08 C, \ add   $8, %rbp
     FF C, D0 C,             \ call  *%rax
 ] ;
 
@@ -234,33 +264,27 @@
 \ Tools ========================================================================
 
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ TODO: use 2/ 2/ 2/ instead
+
 : .S ( -- )
-    DEPTH IF
-        DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0= UNTIL DROP
-    ELSE
-       CR ." EMPTY "
-    THEN
+    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0= UNTIL DROP
+    ELSE DEPTH 0= IF ." EMPTY " ELSE ." UNDERFLOW " THEN THEN
 ;
-        DEPTH .
 
 : ? ( addr -- ) @ . ;
+
+
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
+
+
 : SEE ( "<spaces>ccc<space>" -- )
     PARSE-NAME FIND ( xt nt )
-        [ DEPTH . ]
     CR ." prev:   " OVER @ NAME>STRING TYPE
-    CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF
-        ." yes"
-        [ DEPTH . ]
-        ELSE
-        ." no"
-        [ DEPTH . ]
-        THEN
+    CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
     CR ." xt:     " .
     CR ." nt:     " .
 ;
 
-: BREAK CC C, 90 C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
+: BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
 
 \ Consts and vars  =============================================================
@@ -284,5 +308,3 @@ DECIMAL
 
 \ Interpreter ==================================================================
 
-
-: TEST 10 0 DO CR ." I: " I . ." D: " DEPTH . LOOP ;
