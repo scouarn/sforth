@@ -98,18 +98,72 @@
 : .S ( x * i -- ) DEPTH IF BEGIN DEPTH 0> WHILE CR . REPEAT ELSE ." EMPTY " THEN ;
 
 
-: s+   ( u -- ) 48 C, 83 C, C5 C, C, ; \ addq $u, %rbp
-: s-   ( u -- ) 48 C, 83 C, ED C, C, ; \ subq $u, %rbp
+: docreate ( -- a-addr ) R> 1+ ; \ 1+ to skip the ret
+    \ NOTE: The ret is never executed and we return to child's caller
 
-: >reg ( u r -- ) 48 C, 89 C, 45 OR C, C, ; \ movq u(%rbp), reg
-: reg> ( u r -- ) 48 C, 8B C, 45 OR C, C, ; \ movq reg, u(%rbp)
-: reg>reg ( r1 r2 -- ) 48 C, 89 C, ; \ movq reg1, reg2
+: CREATE   ( "<spaces>name" -- ) ( -- a-addr )
+    \ parent: <parent-code> <ret>
+    \ docreate: Push caller's PFA <ret>
+    \ <child-header> <call docreate> <data>  (call doesn't return)
+    : ['] docreate COMPILE, POSTPONE ;
+;
+
+: >BODY ( xt -- a-addr ) 6 + ;
+: >code ( nt -- xt     ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
+
+: dodoes ( -- ) ( R: ret -- )
+    R> \ Start of child-code, popping the return address will exit from parent
+    CP @ >R
+    LATEST @ >code CP ! COMPILE, \ Redirect child's call
+    R> CP !
+;
+
+: DOES> ( -- ) ( R: ret -- )
+    \ <parent-header> <parent-code> <dodoes> <child-code> <ret>
+    \                                        ^
+    \                   +--------------------+
+    \                   |
+    \ <child-header> <call child-code> <data> (call doesn't return)
+    POSTPONE dodoes
+    \ Start of child-code
+    POSTPONE R> POSTPONE 1+ \ Compile code to get child's PFA (inlined DOCREATE)
+; IMMEDIATE
 
 
+\ : CONSTANT ( x "<spaces>name" -- ) ( -- x ) CREATE , DOES> @ ;
 : CONSTANT ( x "<spaces>name" -- ) ( -- x ) : POSTPONE LITERAL POSTPONE ; ;
 
+: VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
+\ : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) : HERE 13 + POSTPONE LITERAL POSTPONE ; 0 , ;
+
 0 1 - CONSTANT TRUE
-0     CONSTANT FALSE
-20    CONSTANT BL
+00 CONSTANT FALSE
+20 CONSTANT BL
 : SPACE BL EMIT ;
 
+VARIABLE BASE
+: HEX     ( -- ) 10 BASE ! ;
+: DECIMAL ( -- ) 0A BASE ! ;
+HEX
+
+\ Tests
+
+CREATE CR0 .S
+' CR0 >BODY HERE .S
+
+: DOES1 DOES> @ 1 + ; .S
+: DOES2 DOES> @ 2 + ; .S
+CREATE CR1 .S
+CR1 HERE .S
+1 , .S
+CR1 @ .S
+DOES1 .S
+CR1 .S
+DOES2 .S
+CR1 .S
+
+: WEIRD: CREATE DOES> 1 + DOES> 2 + ; .S
+WEIRD: W1 .S
+' W1 >BODY HERE .S
+W1 HERE 1 + .S
+W1 HERE 2 + .S
