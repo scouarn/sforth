@@ -238,24 +238,6 @@ DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
 
 
 
-# Comparisons
-
-DEFINE_WORD ZeroSup, "0>"       # ( n -- flag )
-        cmp     $0, %r8
-        setng   %al             # if <= 0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if >  0 then 0 - 1 = -1 = TRUE
-        movsx   %al, %r8        # Sign extend
-        ret
-
-
-DEFINE_WORD ZeroEq, "0="        # ( n -- flag )
-        cmp     $0, %r8
-        setnz   %al             # if <= 0 then 1 - 1 = 0  = FALSE
-        dec     %al             # if >  0 then 0 - 1 = -1 = TRUE
-        movsx   %al, %r8        # Sign extend
-        ret
-
-
 ## IO
 
 DEFINE_WORD EMIT, "EMIT"        # ( char -- )

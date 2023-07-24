@@ -2,8 +2,9 @@
 : ( 29 PARSE DROP DROP ; IMMEDIATE
 
 \ TODO
+\ SEE when not found...
 \ DEFER
-\ Primitives / Arithmetic / Comparisons
+\ Memory and stack primitives
 \ Double
 \ For loops
 \ CASE
@@ -37,14 +38,15 @@
 
 : /MOD ( n1 n2 -- rem quot ) [
     48 C, 8B C, 45 C, 00 C,     \ movq  (%rbp), %rax        n1
-    40 C, 00 C, 00 C,           \ cqto
+    48 C, 99 C,                 \ cqto
     49 C, F7 C, F8 C,           \ idiv  %r8
     49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
-    49 C, 89 C, 55 C, 00 C,     \ movq    %rdx, (%rbp)      rem
+    48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
 : /   ( x1 x2 -- x3 ) /MOD NIP  ;
 : MOD ( x1 x2 -- x3 ) /MOD DROP ;
+
 
 \ Logical ======================================================================
 
@@ -70,7 +72,46 @@
 
 \ Comparisons ==================================================================
 
-: =   ( x1 x2 -- flag ) - 0= ;
+: cc-o  0 ; : cc-no 1 ; : cc-b  2 ; : cc-ae 3 ;
+: cc-e  4 ; : cc-ne 5 ; : cc-be 6 ; : cc-a  7 ;
+: cc-s  8 ; : cc-ns 9 ; : cc-pe A ; : cc-po B ;
+: cc-l  C ; : cc-ge D ; : cc-le E ; : cc-g  F ;
+
+: 0cmp, ( cond -- ) ( n -- flag )
+    \ Invert cond and dec: if false then -1 (true) else 0 (false)
+    1 XOR 90 OR
+    49 C, 83 C, F8 C, 00 C,     \ cmp     $0, %r8
+    0F C,    C, C0 C,           \ setcc   %al
+    FE C, C8 C,                 \ dec     %al
+    4C C, 0F C, BE C, C0 C,     \ movsx   %al, %r8  # Sign extend
+;
+
+: cmp, ( cond -- ) ( n1 n2 -- flag )
+    \ Invert cond and dec: if false then -1 (true) else 0 (false)
+    1 XOR 90 OR
+    4C C, 39 C, 45 C, 00 C,     \ cmp     %r8, (%rbp)
+    0F C,    C, C0 C,           \ setcc   %al
+    FE C, C8 C,                 \ dec     %al
+    4C C, 0F C, BE C, C0 C,     \ movsx   %al, %r8  # Sign extend
+    48 C, 8D C, 6D C, 08 C,     \ lea     8(%rbp), %rbp
+;
+
+: 0=  (     n -- flag ) [ cc-e  0cmp, ] ;
+: 0<> (     n -- flag ) [ cc-ne 0cmp, ] ;
+: 0>  (     n -- flag ) [ cc-g  0cmp, ] ;
+: 0<  (     n -- flag ) [ cc-l  0cmp, ] ;
+: =   ( x1 x2 -- flag ) [ cc-e   cmp, ] ;
+: <>  ( x1 x2 -- flag ) [ cc-ne  cmp, ] ;
+: >   ( x1 x2 -- flag ) [ cc-g   cmp, ] ;
+: <   ( x1 x2 -- flag ) [ cc-l   cmp, ] ;
+: U>  ( x1 x2 -- flag ) [ cc-a   cmp, ] ;
+: U<  ( x1 x2 -- flag ) [ cc-b   cmp, ] ;
+: U>= ( x1 x2 -- flag ) [ cc-ae  cmp, ] ;
+: U<= ( x1 x2 -- flag ) [ cc-be  cmp, ] ;
+: >=  ( x1 x2 -- flag ) [ cc-ge  cmp, ] ;
+: <=  ( x1 x2 -- flag ) [ cc-le  cmp, ] ;
+: 0>= (     n -- flag ) [ cc-ge 0cmp, ] ;
+: 0<= (     n -- flag ) [ cc-le 0cmp, ] ;
 
 
 \ Utilities ====================================================================
@@ -314,8 +355,8 @@
 
 \ Consts and vars  =============================================================
 
-0 1 - CONSTANT TRUE
-00 CONSTANT FALSE
+0 INVERT CONSTANT TRUE
+0 CONSTANT FALSE
 20 CONSTANT BL
 : SPACE BL EMIT ;
 
