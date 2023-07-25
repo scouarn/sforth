@@ -161,6 +161,10 @@
 
 \ Arithmetic ===================================================================
 
+: NEGATE (      n1 -- n2      ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
+: 1+     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
+: 1-     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C8 C, ] ; \ dec     %r8
+
 : + ( n1 | u1 n2 | u2 -- n3 | u3 ) [
     4C C, 03 C, 45 C, 00 C, sp+ \ add   (%rbp), %r8
 ] ;
@@ -173,6 +177,11 @@
 : * ( n1 n2 -- n3 ) [
     4C C, 0F C, AF C, 45 C, 00 C,   \ imul  (%rbp), %r8     %r8 := n1 * n2
     sp+
+] ;
+
+: S>D ( n -- d ) [
+    sp- 4C C, 89 C, 45 C, 00 C, \ mov %r8, (%rbp)
+        49 C, C1 C, F8 C, 3F C, \ sar $63, %r8      if r8<0 then -1 else 0
 ] ;
 
 : M* ( n1 n2 -- d ) [
@@ -197,14 +206,6 @@
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
-: FM/MOD ( u n -- rem quot ) [
-    48 C, 8B C, 45 C, 08 C,     \ movq  8(%rbp), %rax       u_low
-    48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
-    49 C, F7 C, F8 C,           \ idiv  %r8
-    49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
-    48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
-] ;
-
 : UM/MOD ( ud u -- rem quot ) [
     48 C, 8B C, 45 C, 08 C,     \ movq  8(%rbp), %rax       u_low
     48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
@@ -212,6 +213,22 @@
     49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
+
+: SM/REM ( u n -- rem quot ) [
+    48 C, 8B C, 45 C, 08 C,     \ movq  8(%rbp), %rax       u_low
+    48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
+    49 C, F7 C, F8 C,           \ idiv  %r8
+    49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
+    48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
+] ;
+
+\ : FM/MOD ( u n -- rem quot ) ; \ TODO
+
+: /     (   x1 x2  -- x3    ) /MOD NIP  ;
+: MOD   (   x1 x2  -- x3    ) /MOD DROP ;
+: */MOD ( n1 n2 n3 -- n4 n5 ) >R M* R> ( d n ) SM/REM ;
+: */    ( n1 n2 n3 -- n4    ) */MOD NIP ;
+
 
 : shl-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
 : shr-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E8 C, C, ; \ shr $u, %r8
@@ -235,12 +252,6 @@
     49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
     49 C, D3 C, E8 C,       \ shl   %cl, %r8
 ] ;
-
-: NEGATE (      n1 -- n2      ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
-: 1+     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
-: 1-     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C8 C, ] ; \ dec     %r8
-: /      (   x1 x2 -- x3      ) /MOD NIP  ;
-: MOD    (   x1 x2 -- x3      ) /MOD DROP ;
 
 
 \ Logical ======================================================================
@@ -281,7 +292,7 @@
 : 0=  (     n -- flag ) [ cc-e  0cmp, ] ;
 : 0<> (     n -- flag ) [ cc-ne 0cmp, ] ;
 : 0>  (     n -- flag ) [ cc-g  0cmp, ] ;
-: 0<  (     n -- flag ) [ cc-l  0cmp, ] ;
+: 0<  (     n -- flag ) [ cc-l  0cmp, ] ; \ TODO SAR $63, %r8
 : =   ( x1 x2 -- flag ) [ cc-e   cmp, ] ;
 : <>  ( x1 x2 -- flag ) [ cc-ne  cmp, ] ;
 : >   ( x1 x2 -- flag ) [ cc-g   cmp, ] ;
