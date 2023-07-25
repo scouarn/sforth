@@ -344,16 +344,10 @@ DEFINE_WORD Semi, ";", FLAG_IMM
         movq    curr_def, %rdi
         movb    $0xc3, (%rdi)   # Compile a ret instruction
         incq    curr_def
-        call    xt_RECURSE      # Make the word visible
+        movq    last_def, %rdi  # Make the word visible
+        andb    $(~FLAG_HIDDEN), 8(%rdi)
         incq    state           # Exit compilation mode
         ret
-
-
-DEFINE_WORD RECURSE, "RECURSE", FLAG_IMM
-        movq    last_def, %rdi
-        andb    $(~FLAG_HIDDEN), 8(%rdi)
-        ret
-
 
 
 DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )

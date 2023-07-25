@@ -318,6 +318,11 @@
 : PAD   (   -- addr ) SP@ 100 - ;
 : COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
+: >code   ( nt -- xt ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
+: RECURSE ( -- ) LATEST @ >code COMPILE, ; IMMEDIATE
+
+
+
 \ Control flow =================================================================
 
 : <resolve ( C: ori      --     ) (   -- ) >R HERE 4 - R@ - R> H! ;
@@ -479,7 +484,6 @@
 \ CREATE DOES> =================================================================
 
 : >BODY ( xt -- a-addr ) 6 + ;
-: >code ( nt -- xt     ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
 
 : docreate ( -- a-addr ) R> 1+ ; \ 1+ to skip the ret
     \ NOTE: The ret is never executed and we return to child's caller
@@ -515,6 +519,7 @@
 : CONSTANT ( x "<spaces>name" -- ) ( -- x      ) : POSTPONE LITERAL POSTPONE ; ;
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
 
+
 \ FIXME State does matter but the rationale isn't well explained
 \ https://forth-standard.org/standard/double/TwoVALUE
 \ : VALUE ( x "<spaces>name" -- ) CREATE , DOES> ( -- x ) @ ;
@@ -531,7 +536,7 @@
     FF C, D0 C,             \ call  *%rax
 ] ;
 
-: EXIT ( -- ) R> ;
+: EXIT ( -- ) [ 48 C, 83 C, C4 C, 08 C, ] ; \ add $24, %rsp
 
 : DEFER  (    "<spaces>name" --     ) CREATE 0 , DOES> @ EXECUTE ;
 : DEFER@ (            xt1    -- xt2 ) >BODY @ ;
@@ -577,6 +582,7 @@
     CR ." nt:     " .X
 ;
 
+: . .X ;
 
 
 \ Consts and vars  =============================================================
@@ -596,17 +602,3 @@ DECIMAL
 
 \ ==============================================================================
 \ Interpreter ==================================================================
-
-
-: TEST 0 0 ?DO BREAK I CR .X LOOP CR ." Done! " ;
-
-TEST
-
-: TEST
-    10 0 DO CR
-        10 0 DO I J = IF [CHAR] * EMIT LEAVE ELSE [CHAR] + EMIT THEN LOOP
-    LOOP
-;
-
-
-TEST
