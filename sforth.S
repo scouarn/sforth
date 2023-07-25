@@ -334,7 +334,7 @@ DEFINE_WORD Colon, ":"          # ( "<spaces>ccc<space>" -- )
         stosb                   # Put size
         repe    movsb           # Put name
 
-        decq    state           # Enter compilation mode
+        movq    $-1, state      # Enter compilation mode
 
         movq    %rdi, curr_def
         ret
@@ -346,7 +346,7 @@ DEFINE_WORD Semi, ";", FLAG_IMM
         incq    curr_def
         movq    last_def, %rdi  # Make the word visible
         andb    $(~FLAG_HIDDEN), 8(%rdi)
-        incq    state           # Exit compilation mode
+        movq    $0, state       # Exit compilation mode
         ret
 
 
@@ -647,6 +647,7 @@ _FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )
         jnz     .L_find_loop    # Hidden word
 
         movzxb  9(%rbx), %rcx   # Length
+        # jrcxz   .L_find_loop    # Ignore if length is zero (:NONAME) ## Is it even useful to check for that ?
         cmp     %rax, %rcx
         jne     .L_find_loop    # Next word if the length doesn't match
 

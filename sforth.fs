@@ -318,10 +318,6 @@
 : PAD   (   -- addr ) SP@ 100 - ;
 : COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
-: >code   ( nt -- xt ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
-: RECURSE ( -- ) LATEST @ >code COMPILE, ; IMMEDIATE
-
-
 
 \ Control flow =================================================================
 
@@ -481,9 +477,11 @@
 ; IMMEDIATE
 
 
-\ CREATE DOES> =================================================================
+\ Defining words ===============================================================
+
 
 : >BODY ( xt -- a-addr ) 6 + ;
+: >code ( nt -- xt     ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
 
 : docreate ( -- a-addr ) R> 1+ ; \ 1+ to skip the ret
     \ NOTE: The ret is never executed and we return to child's caller
@@ -514,11 +512,19 @@
 ; IMMEDIATE
 
 
-\ Constants and variables ======================================================
-
 : CONSTANT ( x "<spaces>name" -- ) ( -- x      ) : POSTPONE LITERAL POSTPONE ; ;
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
+: BUFFER:  ( u "<spaces>name" -- ) ( -- a-addr ) CREATE ALLOT ;
 
+: :NONAME ( -- xt ) ( -- xt )
+    HERE LATEST DUP @ ( here latest prev-addr ) , \ Set previous field
+    ( here latest ) ! \ Update latest
+    0 C, 0 C, \ Flags and length (empty name)
+    ] \ Start compiling
+    HERE \ xt
+;
+
+: RECURSE ( -- ) LATEST @ >code COMPILE, ; IMMEDIATE
 
 \ FIXME State does matter but the rationale isn't well explained
 \ https://forth-standard.org/standard/double/TwoVALUE
@@ -602,3 +608,4 @@ DECIMAL
 
 \ ==============================================================================
 \ Interpreter ==================================================================
+
