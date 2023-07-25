@@ -128,37 +128,6 @@ DEFINE_WORD SPAt, "SP@"         # ( -- addr )
 
 ## Memory
 
-DEFINE_WORD At, "@"             # ( addr -- x )
-        movq    (%r8), %r8
-        ret
-
-
-DEFINE_WORD Bang, "!"           # ( x addr -- )
-        DPOP    %rax            # x
-        movq    %rax, (%r8)
-        DPOP    %r8
-        ret
-
-
-DEFINE_WORD HBang, "H!"         # ( x addr -- ) Write half cell
-        DPOP    %rax            # x
-        movl    %eax, (%r8)
-        DPOP    %r8
-        ret
-
-
-DEFINE_WORD PlusBang, "+!"      # ( x addr -- )
-        DPOP    %rax            # x
-        addq    %rax, (%r8)
-        DPOP    %r8
-        ret
-
-
-DEFINE_WORD CAt, "C@"           # ( c-addr -- c )
-        movzxb  (%r8), %r8    # c
-        ret
-
-
 DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
         movq    %r8, %rcx       # u
         DPOP    %r8
@@ -168,7 +137,6 @@ DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
         DPOP    %r8
         repe    movsb
         ret
-
 
 
 ## IO

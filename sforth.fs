@@ -3,7 +3,6 @@
 : ( 29 PARSE DROP DROP ; IMMEDIATE
 
 \ TODO
-\ Memory and rstack primitives
 \ Double
 \ LEAVE UNLOOP ?DO
 \ CASE
@@ -109,17 +108,65 @@
 : 2OVER ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 ) 3 PICK 3 PICK ;
 
 
+\ Memory =======================================================================
+
+: @  (   addr -- x ) [ 4D C, 8B C, 00 C, ] ; \ movq (%r8), %r8
+: !  ( x addr --   ) [
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
+    49 C, 89 C, 00 C,       \ movq    %rax, (%r8)
+    4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: H! ( x addr --   ) [
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
+    41 C, 89 C, 00 C,       \ movq    %rax, (%r8)
+    4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: +! ( n addr --   ) [
+    48 C, 8B C, 45 C, 00 C, \ movq    (%rbp), %rax
+    49 C, 01 C, 00 C,       \ addq    %rax, (%r8)
+    4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: -! ( n addr --   ) [
+    48 C, 8B C, 45 C, 00 C, \ movq    (%rbp), %rax
+    49 C, 29 C, 00 C,       \ subq    %rax, (%r8)
+    4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+
+: C@ ( c addr -- c ) [ 4D C, 0F C, B6 C, 00 C, ] ;  \ movzbq  (%r8), %r8
+: C! ( c addr --   ) [
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
+    41 C, 88 C, 00 C,       \ movb    %al (%r8)
+    4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: CHARS (    n1 -- n2    ) ; \ Do nothing
+: CELLS (    n1 -- n2    ) [ 49 C, C1 C, E0 C, 03 C, ] ; \ shl  $3, %r8
+: CHAR+ ( addr1 -- addr2 ) [ 49 C, FF C, C0 C,       ] ; \ incq %r8
+: CELL+ ( addr1 -- addr2 ) [ 49 C, 83 C, C0 C, 08 C, ] ; \ add  $8, %r8
+
+: 2@ (   addr -- d ) DUP CELL+ @ SWAP @ ;
+: 2! ( d addr --   ) SWAP OVER ! CELL+ ! ;
+
+\ : MOVE ( addr1 addr2 u -- ) [ ] ;
+
 
 \ Arithmetic ===================================================================
 
 : + ( n1 | u1 n2 | u2 -- n3 | u3 ) [
-    4C C, 03 C, 45 C, 00 C,     \ add   (%rbp), %r8
-    sp+
+    4C C, 03 C, 45 C, 00 C, sp+ \ add   (%rbp), %r8
 ] ;
 
 : - ( n1 | u1 n2 | u2 -- n3 | u3 ) [
-    4C C, 2B C, 45 C, 00 C,     \ sub   (%rbp),%r8
-    sp+
+    4C C, 2B C, 45 C, 00 C, sp+ \ sub   (%rbp),%r8
     49 C, F7 C, D8 C,           \ neg   %r8
 ] ;
 
@@ -205,13 +252,9 @@
 : 0>= (     n -- flag ) [ cc-ge 0cmp, ] ;
 : 0<= (     n -- flag ) [ cc-le 0cmp, ] ;
 
+\ TODO: WITHIN
 
 \ Utilities ====================================================================
-
-: CELL+ 8 + ;
-: CELLS 8* ;
-: CHARS ;
-: CHAR+ 1+ ;
 
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
@@ -474,19 +517,3 @@ DECIMAL
 
 \ ==============================================================================
 \ Interpreter ==================================================================
-
-: TEST AA BB CC DD .S CR
-    >R >R .S CR
-    2R@ .S CR
-    R> R> .S CR
-;
-TEST
-ABORT
-
-: TEST AA BB CC DD .S CR
-    2>R .S CR
-    2R@ .S CR
-    2R> .S CR
-;
-
-TEST
