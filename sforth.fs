@@ -3,14 +3,12 @@
 : ( 29 PARSE DROP DROP ; IMMEDIATE
 
 \ TODO
-\ Double
-\ ?DO
-\ Tests
-\ CASE
+\ CASE ENDCASE OF ENDOF (see https://forth-standard.org/standard/rationale)
 \ Numeric output <# # #S #>
 \ Numeric input >NUMBER and standard number parser
 \ ENVIRONMENT?
-\ TO VALUE
+\ TO and VALUE
+\ Tests
 
 : BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
@@ -367,7 +365,21 @@
 
 \ DO loops =====================================================================
 
-: DO  ( C: -- leave-orig dest ) ( l i -- ) ( R: -- leave lim idx )
+\ leave: jump addr to quit the loop (at LOOP just before an UNLOOP)
+\ leave-orig: addr of the cell containing leave, written by LOOP at compilation
+\ dest: jump addr to loop (after DO)
+
+: UNLOOP ( R: leave lim idx -- )
+    48 C, 83 C, C4 C, 18 C, \ add $24, %rsp
+; IMMEDIATE
+
+: LEAVE ( R: leave lim idx -- ) \ UNLOOP performed after the jump
+    FF C, 64 C, 24 C, 10 C, \ jmp *16(%rsp)
+; IMMEDIATE
+
+\ TODO Rewrite without so many POSTPONEs
+
+: DO  ( C: -- leave-orig dest ) ( lim idx -- ) ( R: -- leave lim idx )
     \ Reserve a cell for the leave address
     \ TODO Kinda hacky, similar to S" -> better solution for this kind of storage?
     POSTPONE AHEAD HERE >R 99 , POSTPONE THEN
@@ -381,15 +393,19 @@
     R> HERE ( leave-orig dest )
 ; IMMEDIATE
 
-\ : DO? ( C: -- leave-orig dest ) ( l i -- ) ( R: -- leave lim idx ) ; IMMEDIATE \ TODO
+: ?DO ( C: -- leave-orig dest ) ( lim idx -- ) ( R: -- leave lim idx )
+    POSTPONE AHEAD HERE >R 99 , POSTPONE THEN
+    R@ POSTPONE LITERAL POSTPONE @ ( leave ) POSTPONE >R
+    POSTPONE 2>R
 
-: LEAVE ( R: leave lim idx -- )
-    48 C, 83 C, C4 C, 18 C,  \ add $24, %rsp
-    FF C, 64 C, 24 C, F8 C,  \ jmp *-8(%rsp)
+    \ Same as DO but LEAVE at execution if lim = idx
+    POSTPONE 2R@ POSTPONE = POSTPONE IF POSTPONE LEAVE POSTPONE THEN
+
+    R> HERE
 ; IMMEDIATE
 
-: UNLOOP ( R: leave lim idx -- ) 48 C, 83 C, C4 C, 18 C, ; IMMEDIATE \ add $24, %rsp
 
+\ TODO Test with signed and unsigned indices/limits
 
 : +LOOP ( C: leave-orig dest -- ) ( n -- ) ( R: leave lim i1 -- | leave lim i2 )
         POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
@@ -397,8 +413,8 @@
         POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
         POSTPONE =              ( flag )
         branch0 resolve>        \ Resolve dest: 0branch to DO
-        POSTPONE UNLOOP
         HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
+        POSTPONE UNLOOP
 ; IMMEDIATE
 
 : LOOP  ( C: leave-orig dest -- ) ( -- ) ( R: leave lim i1 -- | lim i2 )
@@ -475,11 +491,11 @@
     R> CP !
 ;
 
-: CREATE   ( "<spaces>name" -- ) ( -- a-addr )
+: CREATE ( "<spaces>name" -- ) ( -- a-addr )
     \ parent: <parent-code> <ret>
     \ docreate: Push caller's PFA <ret>
     \ <child-header> <call docreate> <data>  (call doesn't return)
-    : ['] docreate COMPILE, POSTPONE ;
+    : POSTPONE docreate POSTPONE ;
 ;
 
 : DOES> ( -- ) ( R: ret -- )
@@ -582,12 +598,15 @@ DECIMAL
 \ Interpreter ==================================================================
 
 
-: TEST [ HERE .X ] I ;
+: TEST 0 0 ?DO BREAK I CR .X LOOP CR ." Done! " ;
+
+TEST
 
 : TEST
     10 0 DO CR
         10 0 DO I J = IF [CHAR] * EMIT LEAVE ELSE [CHAR] + EMIT THEN LOOP
     LOOP
 ;
+
 
 TEST
