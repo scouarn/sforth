@@ -3,8 +3,7 @@
 : ( 29 PARSE DROP DROP ; IMMEDIATE
 
 \ TODO
-\ SEE when not found...
-\ Memory and stack primitives
+\ Memory and rstack primitives
 \ Double
 \ LEAVE UNLOOP ?DO
 \ CASE
@@ -52,30 +51,30 @@
     48 C, 89 C, 45 C, 00 C, \ mov     %rax, (%rbp)
 ] ;
 
-
+: ?DUP ( x -- 0 | x x ) [
+    49 C, 83 C, F8 C, 00 C, \ cmp    $0x0,%r8
+    74 C, 08 C,             \ je     rel+8
+    sp-
+    4C C, 89 C, 45 C, 00 C, \ mov    %r8,0x0(%rbp)
+] ;
 
 
 \ Arithmetic ===================================================================
 
 : + ( n1 | u1 n2 | u2 -- n3 | u3 ) [
     4C C, 03 C, 45 C, 00 C,     \ add   (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
+    sp+
 ] ;
 
 : - ( n1 | u1 n2 | u2 -- n3 | u3 ) [
-    4C C, 2B C, 45 C, 00 C,     \ sub   0x0(%rbp),%r8
-    48 C, 8D C, 6D C, 08 C,     \ lea   0x8(%rbp),%rbp
+    4C C, 2B C, 45 C, 00 C,     \ sub   (%rbp),%r8
+    sp+
     49 C, F7 C, D8 C,           \ neg   %r8
 ] ;
 
-: NEGATE ( n1 -- n2 ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
-
-: 1+ ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
-: 1- ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C8 C, ] ; \ dec     %r8
-
 : * ( n1 n2 -- n3 ) [
     4C C, 0F C, AF C, 45 C, 00 C,   \ imul  (%rbp), %r8     %r8 := n1 * n2
-    48 C, 8D C, 6D C, 08 C,         \ leaq  8(%rbp), %rbp
+    sp+
 ] ;
 
 : /MOD ( n1 n2 -- rem quot ) [
@@ -86,34 +85,24 @@
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
-: /   ( x1 x2 -- x3 ) /MOD NIP  ;
-: MOD ( x1 x2 -- x3 ) /MOD DROP ;
+: NEGATE (      n1 -- n2      ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
+: 1+     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
+: 1-     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C8 C, ] ; \ dec     %r8
+: /      (   x1 x2 -- x3      ) /MOD NIP  ;
+: MOD    (   x1 x2 -- x3      ) /MOD DROP ;
 
 
 \ Logical ======================================================================
 
-: INVERT ( x1 -- x2 ) [ 49 C, F7 C, D0 C, ] ; \ not %r8
-
-: AND ( x1 x2 -- x3 ) [
-    4C C, 23 C, 45 C, 00 C,     \ and   (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
-] ;
-
-
-: OR ( x1 x2 -- x3 ) [
-    4C C, 0B C, 45 C, 00 C,     \ or    (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
-] ;
-
-
-: XOR ( x1 x2 -- x3 ) [
-    4C C, 33 C, 45 C, 00 C,     \ xor   (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C,     \ lea   8(%rbp), %rbp
-] ;
+: INVERT ( x1 -- x2 ) [ 49 C, F7 C, D0 C, ] ;           \ not %r8
+: AND ( x1 x2 -- x3 ) [ 4C C, 23 C, 45 C, 00 C, sp+ ] ; \ and   (%rbp), %r8
+: OR  ( x1 x2 -- x3 ) [ 4C C, 0B C, 45 C, 00 C, sp+ ] ; \ or    (%rbp), %r8
+: XOR ( x1 x2 -- x3 ) [ 4C C, 33 C, 45 C, 00 C, sp+ ] ; \ xor   (%rbp), %r8
 
 
 \ Comparisons ==================================================================
 
+\ x86 condition codes
 : cc-o  0 ; : cc-no 1 ; : cc-b  2 ; : cc-ae 3 ;
 : cc-e  4 ; : cc-ne 5 ; : cc-be 6 ; : cc-a  7 ;
 : cc-s  8 ; : cc-ns 9 ; : cc-pe A ; : cc-po B ;
@@ -135,7 +124,7 @@
     0F C,    C, C0 C,           \ setcc   %al
     FE C, C8 C,                 \ dec     %al
     4C C, 0F C, BE C, C0 C,     \ movsx   %al, %r8  # Sign extend
-    48 C, 8D C, 6D C, 08 C,     \ lea     8(%rbp), %rbp
+    sp+
 ;
 
 : 0=  (     n -- flag ) [ cc-e  0cmp, ] ;
@@ -180,7 +169,7 @@
 : branch0  ( C:          -- ori ) ( x -- )
     4D C, 85 C, C0 C,       \ test %r8, %r8
     4C C, 8B C, 45 C, 00 C, \ mov (%rbp), %r8
-    48 C, 8D C, 6D C, 08 C, \ lea 8(%rbp), %rbp     -> Use lea to keep flags
+    48 C, 8D C, 6D C, 08 C, \ lea 8(%rbp), %rbp -> We have to lea to keep flags
     0F C, 84 C,             \ jz rel32
     HERE 4 ALLOT            \ rel32
 ;
@@ -194,7 +183,6 @@
 : UNTIL  ( C: dest --          ) ( x -- ) branch0 resolve>          ; IMMEDIATE
 : WHILE  ( C: dest -- ori dest ) ( x -- ) branch0 SWAP              ; IMMEDIATE
 : REPEAT ( C: ori dest --      ) (   -- ) branch  resolve> <resolve ; IMMEDIATE
-
 
 
 \ POSTPONE =====================================================================
@@ -359,7 +347,7 @@
 : EXECUTE ( i*x xt -- j*x ) [
     4C C, 89 C, C0 C,       \ mov   %r8, %rax
     4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
-    48 C, 83 C, C5 C, 08 C, \ add   $8, %rbp
+    sp+
     FF C, D0 C,             \ call  *%rax
 ] ;
 
@@ -399,17 +387,17 @@
 
 
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
+: BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
 
-: SEE ( "<spaces>ccc<space>" -- )
-    PARSE-NAME FIND ( xt nt )
-    CR ." prev:   " OVER @ NAME>STRING TYPE
+: SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND ( nt xt )
+    OVER 0= IF ." NOT FOUND " 2DROP EXIT THEN
+    CR ." prev:   " OVER @ ?DUP IF NAME>STRING TYPE ELSE ." (none)" THEN
     CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
     CR ." xt:     " .X
     CR ." nt:     " .X
 ;
 
-: BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
 
 \ Consts and vars  =============================================================
@@ -427,17 +415,6 @@ VARIABLE BASE
 : DECIMAL ( -- ) 0A BASE ! ;
 DECIMAL
 
-V2 .X
-.S
-
-333 VD2 .X
-.S
-
-V2 .X
-V1 .X
-.S
 \ ==============================================================================
-
-
 \ Interpreter ==================================================================
 
