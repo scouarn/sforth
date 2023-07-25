@@ -77,6 +77,7 @@
     sp+
 ] ;
 
+
 : /MOD ( n1 n2 -- rem quot ) [
     48 C, 8B C, 45 C, 00 C,     \ movq  (%rbp), %rax        n1
     48 C, 99 C,                 \ cqto
@@ -84,6 +85,15 @@
     49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
+
+: shl, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
+: shr, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E8 C, C, ; \ shr $u, %r8
+: 2* ( x1 -- x2 ) [ 1 shl, ] ;
+: 4* ( x1 -- x2 ) [ 2 shl, ] ;
+: 8* ( x1 -- x2 ) [ 3 shl, ] ;
+: 2/ ( x1 -- x2 ) [ 1 shr, ] ;
+: 4/ ( x1 -- x2 ) [ 2 shr, ] ;
+: 8/ ( x1 -- x2 ) [ 3 shr, ] ;
 
 : NEGATE (      n1 -- n2      ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
 : 1+     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
@@ -148,7 +158,7 @@
 \ Utilities ====================================================================
 
 : CELL+ 8 + ;
-: CELLS 8 * ;
+: CELLS 8* ;
 : CHARS ;
 : CHAR+ 1+ ;
 
@@ -376,7 +386,7 @@
 
 \ Tools ========================================================================
 
-: DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ TODO: use 2/ 2/ 2/ instead
+: DEPTH ( -- +n ) SP@ S0 SWAP - 8/ ;
 
 : .S ( -- )
     DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR .X 1- DUP 0= UNTIL DROP
