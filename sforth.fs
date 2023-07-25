@@ -6,11 +6,12 @@
 \ SEE when not found...
 \ Memory and stack primitives
 \ Double
-\ For loops
+\ LEAVE UNLOOP ?DO
 \ CASE
 \ Numeric output <# # #S #>
 \ Numeric input >NUMBER and standard number parser
 \ ENVIRONMENT?
+\ TO VALUE
 
 \ Stack ========================================================================
 
@@ -219,7 +220,7 @@
 
 \ DO loops =====================================================================
 
-: DO? ( C: -- dest ) ( l i -- ) ( R: -- l i ) ; IMMEDIATE
+\ : DO? ( C: -- dest ) ( l i -- ) ( R: -- l i ) ; IMMEDIATE \ TODO
 
 : DO  ( C: -- dest ) ( l i -- ) ( R: -- l i )
     POSTPONE SWAP
@@ -229,17 +230,16 @@
 ; IMMEDIATE
 
 : I ( -- idx ) ( R: lim idx ret -- lim idx ) [
-    48 C, 83 C, ED C, 08 C,       \ sub    $8, %rbp
+    sp-
     4C C, 89 C, 45 C, 00 C,       \ mov    r8, (%rbp)
     4C C, 8B C, 44 C, 24 C, 08 C, \ mov    8(%rsp), %r8
 ] ;
 
 : J ( -- i1 ) ( R: l1 i1 l2 i2 ret -- l1 i1 l2 i2 ret ) [
-    48 C, 83 C, ED C, 08 C,       \ add    $8, %rbp
+    sp-
     4C C, 89 C, 45 C, 00 C,       \ mov    r8, (%rbp)
     4C C, 8B C, 44 C, 24 C, 18 C, \ mov    24(%rsp), %r8
 ] ;
-
 
 : LOOP  ( C: dest -- ) ( -- ) ( R: lim i1 -- | lim i2 )
         POSTPONE R> POSTPONE 1+ POSTPONE R> ( i2 lim )
@@ -251,9 +251,17 @@
         POSTPONE R> POSTPONE DROP
 ; IMMEDIATE
 
-: LOOP+ ( C: do -- ) ( n -- ) ( R: loop1 -- |loop2 ) ; IMMEDIATE
+: +LOOP ( C: do -- ) ( n -- ) ( R: loop1 -- |loop2 )
+        POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
+        POSTPONE 2DUP ( i2 lim i2 lim )
+        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
+        POSTPONE =              ( flag )
+        branch0 resolve>
+        POSTPONE R> POSTPONE DROP
+        POSTPONE R> POSTPONE DROP
+; IMMEDIATE
 
-: LEAVE  ( -- ) ( R: loop -- ) ;
+: LEAVE  ( -- ) ( R: loop -- ) ; \ TODO
 : UNLOOP ( -- ) ( R: loop -- ) ;
 
 
@@ -303,7 +311,6 @@
 \ CREATE DOES> =================================================================
 
 : >BODY ( xt -- a-addr ) 6 + ;
-
 : >code ( nt -- xt     ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
 
 : docreate ( -- a-addr ) R> 1+ ; \ 1+ to skip the ret
@@ -334,8 +341,17 @@
     POSTPONE R> POSTPONE 1+ \ Compile code to get child's PFA
 ; IMMEDIATE
 
+
+\ Constants and variables ======================================================
+
 : CONSTANT ( x "<spaces>name" -- ) ( -- x      ) : POSTPONE LITERAL POSTPONE ; ;
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
+
+\ FIXME State does matter but the rationale isn't well explained
+\ https://forth-standard.org/standard/double/TwoVALUE
+\ : VALUE ( x "<spaces>name" -- ) CREATE , DOES> ( -- x ) @ ;
+\ : TO    ( x "<spaces>name" -- ) ' >BODY ! ;
+
 
 
 \ DEFER ========================================================================
@@ -411,7 +427,15 @@ VARIABLE BASE
 : DECIMAL ( -- ) 0A BASE ! ;
 DECIMAL
 
+V2 .X
+.S
 
+333 VD2 .X
+.S
+
+V2 .X
+V1 .X
+.S
 \ ==============================================================================
 
 
