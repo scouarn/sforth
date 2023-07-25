@@ -184,6 +184,8 @@
         49 C, C1 C, F8 C, 3F C, \ sar $63, %r8      if r8<0 then -1 else 0
 ] ;
 
+: D>S ( d -- n ) DROP ; \ Easy on 2's complement machine
+
 : M* ( n1 n2 -- d ) [
     48 C, 8B C, 45 C, 00 C, \ mov   (%rbp), %rax
     49 C, F7 C, E8 C,       \ imul  %r8
@@ -226,7 +228,7 @@
 
 : /     (   x1 x2  -- x3    ) /MOD NIP  ;
 : MOD   (   x1 x2  -- x3    ) /MOD DROP ;
-: */MOD ( n1 n2 n3 -- n4 n5 ) >R M* R> ( d n ) SM/REM ;
+: */MOD ( n1 n2 n3 -- n4 n5 ) >R M* R> ( d n3 ) SM/REM ;
 : */    ( n1 n2 n3 -- n4    ) */MOD NIP ;
 
 
@@ -362,7 +364,12 @@
 
 \ DO loops =====================================================================
 
-\ : DO? ( C: -- dest ) ( l i -- ) ( R: -- l i ) ; IMMEDIATE \ TODO
+\ TODO At runtime, push the addr after LOOP (just before UNLOOP),
+\ this has to be resolved at compile time by LOOP
+\ ( C: -- leave-orig dest ) ( R: -- leave-addr lim idx )
+\ => Recompile a literal in DO ?
+\ : LEAVE  ( R: leave lim idx -- ) rsp+=16, pop-rax, jump-*rax, ; IMMEDIATE
+\ : UNLOOP ( R: leave lim idx -- ) rsp+=24, ; IMMEDIATE
 
 : DO  ( C: -- dest ) ( l i -- ) ( R: -- l i )
     POSTPONE SWAP
@@ -370,6 +377,28 @@
     POSTPONE >R
     HERE
 ; IMMEDIATE
+
+
+\ : DO? ( C: -- dest ) ( l i -- ) ( R: -- l i ) ; IMMEDIATE \ TODO
+
+: UNLOOP ( R: lim idx -- ) 48 C, 83 C, C4 C, 10 C, ; IMMEDIATE \ add $16, %rsp
+
+
+
+: +LOOP ( C: do -- ) ( n -- ) ( R: loop1 -- |loop2 )
+        POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
+        POSTPONE 2DUP ( i2 lim i2 lim )
+        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
+        POSTPONE =              ( flag )
+        branch0 resolve>        \ Branch to DO
+                                \ TODO resolve the leave addr (HERE)
+        POSTPONE UNLOOP
+; IMMEDIATE
+
+: LOOP  ( C: dest -- ) ( -- ) ( R: lim i1 -- | lim i2 )
+        1 POSTPONE LITERAL POSTPONE +LOOP
+; IMMEDIATE
+
 
 : I ( -- idx ) ( R: lim idx ret -- lim idx ) [
     sp-
@@ -383,28 +412,6 @@
     4C C, 8B C, 44 C, 24 C, 18 C, \ mov    24(%rsp), %r8
 ] ;
 
-: LOOP  ( C: dest -- ) ( -- ) ( R: lim i1 -- | lim i2 )
-        POSTPONE R> POSTPONE 1+ POSTPONE R> ( i2 lim )
-        POSTPONE 2DUP ( i2 lim i2 lim )
-        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
-        POSTPONE =              ( flag )
-        branch0 resolve>
-        POSTPONE R> POSTPONE DROP
-        POSTPONE R> POSTPONE DROP
-; IMMEDIATE
-
-: +LOOP ( C: do -- ) ( n -- ) ( R: loop1 -- |loop2 )
-        POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
-        POSTPONE 2DUP ( i2 lim i2 lim )
-        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
-        POSTPONE =              ( flag )
-        branch0 resolve>
-        POSTPONE R> POSTPONE DROP
-        POSTPONE R> POSTPONE DROP
-; IMMEDIATE
-
-: LEAVE  ( -- ) ( R: loop -- ) ; \ TODO
-: UNLOOP ( -- ) ( R: loop -- ) ;
 
 
 
@@ -571,3 +578,15 @@ DECIMAL
 
 \ ==============================================================================
 \ Interpreter ==================================================================
+
+
+: TEST 10 0 DO I CR .X LOOP ;
+
+: TEST
+    10 0 DO CR
+        10 0 DO I J = IF [CHAR] * ELSE [CHAR] + THEN EMIT LOOP
+    LOOP
+;
+
+TEST
+
