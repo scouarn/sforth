@@ -4,12 +4,15 @@
 
 \ TODO
 \ Double
-\ LEAVE UNLOOP ?DO
+\ ?DO
+\ Tests
 \ CASE
 \ Numeric output <# # #S #>
 \ Numeric input >NUMBER and standard number parser
 \ ENVIRONMENT?
 \ TO VALUE
+
+: BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
 \ Stack ========================================================================
 
@@ -364,55 +367,55 @@
 
 \ DO loops =====================================================================
 
-\ TODO At runtime, push the addr after LOOP (just before UNLOOP),
-\ this has to be resolved at compile time by LOOP
-\ ( C: -- leave-orig dest ) ( R: -- leave-addr lim idx )
-\ => Recompile a literal in DO ?
-\ : LEAVE  ( R: leave lim idx -- ) rsp+=16, pop-rax, jump-*rax, ; IMMEDIATE
-\ : UNLOOP ( R: leave lim idx -- ) rsp+=24, ; IMMEDIATE
+: DO  ( C: -- leave-orig dest ) ( l i -- ) ( R: -- leave lim idx )
+    \ Reserve a cell for the leave address
+    \ TODO Kinda hacky, similar to S" -> better solution for this kind of storage?
+    POSTPONE AHEAD HERE >R 99 , POSTPONE THEN
 
-: DO  ( C: -- dest ) ( l i -- ) ( R: -- l i )
-    POSTPONE SWAP
-    POSTPONE >R
-    POSTPONE >R
-    HERE
+    \ At execution, push the value inside the cell, which was set by LOOP
+    R@ ( leave-orig ) POSTPONE LITERAL POSTPONE @ ( leave ) POSTPONE >R
+    POSTPONE 2>R \ Also push lim and idx
+
+    \ At compilation, pass leave-orig for LOOP to resolve and dest so LOOP can
+    \ jump back here
+    R> HERE ( leave-orig dest )
 ; IMMEDIATE
 
+\ : DO? ( C: -- leave-orig dest ) ( l i -- ) ( R: -- leave lim idx ) ; IMMEDIATE \ TODO
 
-\ : DO? ( C: -- dest ) ( l i -- ) ( R: -- l i ) ; IMMEDIATE \ TODO
+: LEAVE ( R: leave lim idx -- )
+    48 C, 83 C, C4 C, 18 C,  \ add $24, %rsp
+    FF C, 64 C, 24 C, F8 C,  \ jmp *-8(%rsp)
+; IMMEDIATE
 
-: UNLOOP ( R: lim idx -- ) 48 C, 83 C, C4 C, 10 C, ; IMMEDIATE \ add $16, %rsp
+: UNLOOP ( R: leave lim idx -- ) 48 C, 83 C, C4 C, 18 C, ; IMMEDIATE \ add $24, %rsp
 
 
-
-: +LOOP ( C: do -- ) ( n -- ) ( R: loop1 -- |loop2 )
+: +LOOP ( C: leave-orig dest -- ) ( n -- ) ( R: leave lim i1 -- | leave lim i2 )
         POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
         POSTPONE 2DUP ( i2 lim i2 lim )
         POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
         POSTPONE =              ( flag )
-        branch0 resolve>        \ Branch to DO
-                                \ TODO resolve the leave addr (HERE)
+        branch0 resolve>        \ Resolve dest: 0branch to DO
         POSTPONE UNLOOP
+        HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
 ; IMMEDIATE
 
-: LOOP  ( C: dest -- ) ( -- ) ( R: lim i1 -- | lim i2 )
-        1 POSTPONE LITERAL POSTPONE +LOOP
+: LOOP  ( C: leave-orig dest -- ) ( -- ) ( R: leave lim i1 -- | lim i2 )
+        1 POSTPONE LITERAL
+        POSTPONE +LOOP
 ; IMMEDIATE
 
 
-: I ( -- idx ) ( R: lim idx ret -- lim idx ) [
-    sp-
-    4C C, 89 C, 45 C, 00 C,       \ mov    r8, (%rbp)
-    4C C, 8B C, 44 C, 24 C, 08 C, \ mov    8(%rsp), %r8
-] ;
+: I ( -- idx ) ( R: leave lim idx -- leave lim idx )
+    sp-   4C C, 89 C, 45 C, 00 C, \ mov    r8, (%rbp)
+    4C C, 8B C, 04 C, 24 C,       \ mov    (%rsp), %r8
+; IMMEDIATE
 
-: J ( -- i1 ) ( R: l1 i1 l2 i2 ret -- l1 i1 l2 i2 ret ) [
-    sp-
-    4C C, 89 C, 45 C, 00 C,       \ mov    r8, (%rbp)
+: J ( -- i1 ) ( R: leave1 lim1 i1 leave2 lim2 i2 -- <same> )
+    sp-   4C C, 89 C, 45 C, 00 C, \ mov    r8, (%rbp)
     4C C, 8B C, 44 C, 24 C, 18 C, \ mov    24(%rsp), %r8
-] ;
-
-
+; IMMEDIATE
 
 
 \ Strings ======================================================================
@@ -548,7 +551,6 @@
 
 
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
-: BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
 
 : SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND ( nt xt )
@@ -580,13 +582,12 @@ DECIMAL
 \ Interpreter ==================================================================
 
 
-: TEST 10 0 DO I CR .X LOOP ;
+: TEST [ HERE .X ] I ;
 
 : TEST
     10 0 DO CR
-        10 0 DO I J = IF [CHAR] * ELSE [CHAR] + THEN EMIT LOOP
+        10 0 DO I J = IF [CHAR] * EMIT LEAVE ELSE [CHAR] + EMIT THEN LOOP
     LOOP
 ;
 
 TEST
-
