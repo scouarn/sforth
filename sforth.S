@@ -113,46 +113,6 @@ DEFINE_WORD \label, \name, \flags
 
 ## Stack manipulation
 
-DEFINE_WORD SupR, ">R"          # ( x -- ) ( R: -- x )
-        popq    %rax            # Return addr
-        movq    %r8, %rbx       # x
-        DPOP    %r8
-        pushq   %rbx            # x
-        jmp    *%rax            # Ret
-
-
-DEFINE_WORD RSup, "R>"          # ( -- x ) ( R: x -- )
-        popq    %rax            # Return addr
-        DPUSH   %r8
-        popq    %r8             # x
-        jmp    *%rax            # Ret
-
-
-DEFINE_WORD RAt, "R@"           # ( -- x ) ( R: x -- x )
-        DPUSH   %r8
-        movq    8(%rsp), %r8    # x
-        ret
-
-
-DEFINE_WORD TwoSupR, "2>R"      # ( x1 x2 -- ) ( R: -- x1 x2 )
-        popq    %rax            # Return addr
-        push    (%rbp)          # x1
-        push    %r8             # x2
-        movq    8(%rbp), %r8
-        leaq    16(%rbp), %rbp
-        jmp    *%rax            # Ret
-
-
-DEFINE_WORD TwoRSup, "2R>"      # ( -- x1 x2 ) ( R: x1 x2 -- )
-        leaq    -16(%rbp), %rbp
-        movq    %r8, 8(%rbp)
-        popq    %rax            # Return addr
-        popq    %r8             # x1
-        popq    (%rbp)          # x2
-        jmp    *%rax            # Ret
-
-
-
 DEFINE_WORD SZero, "S0"         # ( -- addr )
         DPUSH   %r8
         movq    $dstack_start, %r8

@@ -25,6 +25,11 @@
 : DUP  ( x     -- x x      ) [ sp- 4C C, 89 C, 45 C, 00 C, ] ; \ mov %r8, (%rbp)
 : SWAP ( x1 x2 -- x2 x1    ) [ 4C C, 87 C, 45 C, 00 C, ] ; \ xchg %r8, (%rbp)
 : NIP  ( x1 x2   -- x2     ) [ sp+ ] ;
+
+: PICK ( xu...x1 x0 u -- xu...x1 x0 xu ) [
+     4E C, 8B C, 44 C, C5 C, 00 C, \ mov (%rbp, %r8, 8), %r8
+] ;
+
 : OVER ( x1 x2 -- x1 x2 x1 ) [
     sp- 4C C, 89 C, 45 C, 00 C, \ mov %r8, (%rbp)
         4C C, 8B C, 45 C, 08 C, \ mov 8(%rbp), %r8
@@ -57,6 +62,52 @@
     sp-
     4C C, 89 C, 45 C, 00 C, \ mov    %r8,0x0(%rbp)
 ] ;
+
+: >R ( -- x ) ( R: x -- )
+    41 C, 50 C,             \ push   %r8
+    4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
+    sp+
+; IMMEDIATE
+
+: R> ( -- x ) ( R: x -- )
+    sp-
+    4C C, 89 C, 45 C, 00 C, \ mov   %r8, (%rbp)
+    41 C, 58 C,             \ pop   %r8
+; IMMEDIATE
+
+: R@ ( -- x ) ( R: x -- x )
+    sp-
+    4C C, 89 C, 45 C, 00 C, \ mov    %r8, (%rbp)
+    4C C, 8B C, 04 C, 24 C, \ mov   (%rsp), %r8
+; IMMEDIATE
+
+: 2>R ( x1 x2 -- )   ( R: -- x1 x2 )
+    FF C, 75 C, 00 C,       \ push  (%rbp)
+    41 C, 50 C,             \ push  %r8
+    4C C, 8B C, 45 C, 08 C, \ mov   8(%rbp), %r8
+    48 C, 8D C, 6D C, 10 C, \ lea   16(%rbp), %rbp
+; IMMEDIATE
+
+: 2R> ( -- x1 x2 )   ( R: x1 x2 -- )
+    48 C, 8D C, 6D C, F0 C, \ lea   -16(%rbp), %rbp
+    4C C, 89 C, 45 C, 00 C, \ mov   %r8, 8(%rbp)
+    8F C, 45 C, 00 C,       \ pop  (%rbp)
+    41 C, 58 C,             \ pop  %r8
+; IMMEDIATE
+
+: 2R@ ( -- x1 x2 )   ( R: x1 x2 -- x1 x2 )
+    48 C, 8D C, 6D C, F0 C,       \ lea   -16(%rbp), %rbp
+    4C C, 89 C, 45 C, 00 C,       \ mov   %r8, 8(%rbp)
+    4C C, 8B C, 44 C, 24 C, 08 C, \ mov   8(%rsp), %r8
+    4C C, 89 C, 45 C, 00 C,       \ mov   %r8, (%rbp)
+    4C C, 8B C, 04 C, 24 C,       \ mov   (%rsp), %r8
+; IMMEDIATE
+
+: 2DROP (       x1 x2 --                   ) DROP DROP ;
+: 2DUP  (       x1 x2 -- x1 x2 x1 x2       ) OVER OVER ;
+: 2SWAP ( x1 x2 x3 x4 -- x3 x4 x1 x2       ) >R -ROT R> -ROT ;
+: 2OVER ( x1 x2 x3 x4 -- x1 x2 x3 x4 x1 x2 ) 3 PICK 3 PICK ;
+
 
 
 \ Arithmetic ===================================================================
@@ -166,10 +217,6 @@
 : ALLOT ( n --      ) CP +! ;
 : PAD   (   -- addr ) SP@ 100 - ;
 : COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
-
-: 2DROP ( x1 x2 --             ) DROP DROP ;
-: 2DUP  ( x1 x2 -- x1 x2 x1 x2 ) OVER OVER ;
-
 
 \ Control flow =================================================================
 
@@ -428,3 +475,18 @@ DECIMAL
 \ ==============================================================================
 \ Interpreter ==================================================================
 
+: TEST AA BB CC DD .S CR
+    >R >R .S CR
+    2R@ .S CR
+    R> R> .S CR
+;
+TEST
+ABORT
+
+: TEST AA BB CC DD .S CR
+    2>R .S CR
+    2R@ .S CR
+    2R> .S CR
+;
+
+TEST
