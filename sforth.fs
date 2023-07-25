@@ -175,6 +175,19 @@
     sp+
 ] ;
 
+: M* ( n1 n2 -- d ) [
+    48 C, 8B C, 45 C, 00 C, \ mov   (%rbp), %rax
+    49 C, F7 C, E8 C,       \ imul  %r8
+    48 C, 89 C, 45 C, 00 C, \ mov   %rax, (%rbp)
+    49 C, 89 C, D0 C,       \ mov   %rdx, %r8
+] ;
+
+: UM* ( u1 u2 -- ud ) [
+    48 C, 8B C, 45 C, 00 C, \ mov   (%rbp), %rax
+    49 C, F7 C, E0 C,       \ mul   %r8
+    48 C, 89 C, 45 C, 00 C, \ mov   %rax, (%rbp)
+    49 C, 89 C, D0 C,       \ mov   %rdx, %r8
+] ;
 
 : /MOD ( n1 n2 -- rem quot ) [
     48 C, 8B C, 45 C, 00 C,     \ movq  (%rbp), %rax        n1
@@ -184,14 +197,28 @@
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
-: shl, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
-: shr, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E8 C, C, ; \ shr $u, %r8
-: 2* ( x1 -- x2 ) [ 1 shl, ] ;
-: 4* ( x1 -- x2 ) [ 2 shl, ] ;
-: 8* ( x1 -- x2 ) [ 3 shl, ] ;
-: 2/ ( x1 -- x2 ) [ 1 shr, ] ;
-: 4/ ( x1 -- x2 ) [ 2 shr, ] ;
-: 8/ ( x1 -- x2 ) [ 3 shr, ] ;
+: shl-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
+: shr-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E8 C, C, ; \ shr $u, %r8
+: 2* ( x1 -- x2 ) [ 1 shl-imm, ] ;
+: 4* ( x1 -- x2 ) [ 2 shl-imm, ] ;
+: 8* ( x1 -- x2 ) [ 3 shl-imm, ] ;
+: 2/ ( x1 -- x2 ) [ 1 shr-imm, ] ;
+: 4/ ( x1 -- x2 ) [ 2 shr-imm, ] ;
+: 8/ ( x1 -- x2 ) [ 3 shr-imm, ] ;
+
+: LSHIFT ( x1 u -- x2 ) [
+    48 C, 8B C, 4D C, 00 C, \ mov (%rbp), %rcx
+    sp+
+    49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
+    49 C, D3 C, E0 C,       \ shl   %cl, %r8
+] ;
+
+: RSHIFT ( x1 u -- x2 ) [
+    48 C, 8B C, 4D C, 00 C, \ mov (%rbp), %rcx
+    sp+
+    49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
+    49 C, D3 C, E8 C,       \ shl   %cl, %r8
+] ;
 
 : NEGATE (      n1 -- n2      ) [ 49 C, F7 C, D8 C, ] ; \ neg   %r8
 : 1+     ( n1 | u1 -- n2 | u2 ) [ 49 C, FF C, C0 C, ] ; \ incq    %r8
