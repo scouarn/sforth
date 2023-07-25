@@ -197,6 +197,22 @@
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
+: FM/MOD ( u n -- rem quot ) [
+    48 C, 8B C, 45 C, 08 C,     \ movq  8(%rbp), %rax       u_low
+    48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
+    49 C, F7 C, F8 C,           \ idiv  %r8
+    49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
+    48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
+] ;
+
+: UM/MOD ( ud u -- rem quot ) [
+    48 C, 8B C, 45 C, 08 C,     \ movq  8(%rbp), %rax       u_low
+    48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
+    49 C, F7 C, F0 C,           \ div   %r8
+    49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
+    48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
+] ;
+
 : shl-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
 : shr-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E8 C, C, ; \ shr $u, %r8
 : 2* ( x1 -- x2 ) [ 1 shl-imm, ] ;
