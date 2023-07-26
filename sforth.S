@@ -126,19 +126,6 @@ DEFINE_WORD SPAt, "SP@"         # ( -- addr )
         ret
 
 
-## Memory
-
-DEFINE_WORD MOVE, "MOVE"        # ( addr1 addr2 u -- ) # TODO: optimize better
-        movq    %r8, %rcx       # u
-        DPOP    %r8
-        movq    %r8, %rdi       # addr2
-        DPOP    %r8
-        movq    %r8, %rsi       # addr1
-        DPOP    %r8
-        repe    movsb
-        ret
-
-
 ## IO
 
 DEFINE_WORD EMIT, "EMIT"        # ( char -- )
@@ -215,18 +202,6 @@ DEFINE_WORD DotX, ".X"           # ( u -- ) Print hex unsigned with leading 0s
 
 
 # Compilation
-
-DEFINE_WORD CONST_FLAG_IMM, "FLAG-IMM"
-        DPUSH   %r8
-        movq    $FLAG_IMM, %r8
-        ret
-
-
-DEFINE_WORD CONST_FLAG_HIDDEN, "FLAG-HIDDEN"
-        DPUSH   %r8
-        movq    $FLAG_HIDDEN, %r8
-        ret
-
 
 DEFINE_WORD CP, "CP"            # ( -- addr )
         DPUSH   %r8
@@ -336,7 +311,7 @@ DEFINE_WORD Colon, ":"          # ( "<spaces>ccc<space>" -- )
 
         movq    $-1, state      # Enter compilation mode
 
-        movq    %rdi, curr_def
+        movq    %rdi, curr_def  # Update CP
         ret
 
 
@@ -380,7 +355,6 @@ source_buf:
 
 _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         # %rbx := Number of non special chars read (one newline -> 1)
-
         movb    $'>', %al       # Prompt TODO
         call    _EMIT
         movb    $' ', %al
@@ -455,46 +429,6 @@ DEFINE_WORD REFILL, "REFILL"
         decq    %rax            # -1 (TRUE) if rbx <> 0
         DPUSH   %rax
         ret
-
-
-_WORD:  # ( "<chars>ccc<char>" -- ) %dl: char
-        # Update source_idx, word_buf and word_cnt
-        movq    source_idx, %rsi # Index in source_buf
-        xorq    %rdi, %rdi       # Index in word_cnt
-
-.Lword_skip: # Skip leading spaces
-        cmpq    source_cnt, %rsi
-        jge     .Lword_end
-        movb    source_buf(%rsi), %al
-        incq    %rsi
-
-        cmpb    %dl, %al
-        je      .Lword_skip
-
-.Lword_loop: # Copy to word_buf until a space is found
-        cmpq    $WORD_SZ, %rdi
-        jge     .Lword_end
-        movb    %al, word_buf(%rdi)
-        incq    %rdi
-
-        cmpq    source_cnt, %rsi
-        jge     .Lword_end
-        movb    source_buf(%rsi), %al
-        incq    %rsi
-
-        cmpb    %dl, %al
-        jne     .Lword_loop
-
-.Lword_end: # Set source_idx and word_cnt
-        movq    %rsi, source_idx
-        movq    %rdi, %rax
-        movb    %al,  word_cnt
-        ret
-
-word_cnt: .byte 0
-word_buf:
-        .skip WORD_SZ
-        .byte 0
 
 
 _PARSE:  # ( bl:char "ccc<char>" -- rdi:c-addr rcx:u )

@@ -62,6 +62,9 @@
     4C C, 89 C, 45 C, 00 C, \ mov    %r8,0x0(%rbp)
 ] ;
 
+
+: rdrop ( -- ) ( R: x -- ) 48 C, 83 C, C4 C, 08 C, ; IMMEDIATE \ add $8, %rsp
+
 : >R ( -- x ) ( R: x -- )
     41 C, 50 C,             \ push   %r8
     4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
@@ -110,6 +113,8 @@
 
 \ Memory =======================================================================
 
+: ALIGNED ( addr -- a-addr ) ; \ Byte aligned
+
 : @  (   addr -- x ) [ 4D C, 8B C, 00 C, ] ; \ movq (%r8), %r8
 : !  ( x addr --   ) [
     48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
@@ -118,7 +123,7 @@
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
 
-: H! ( x addr --   ) [
+: H! ( x addr --   ) [ \ Store Half cell (4bytes)
     48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
     41 C, 89 C, 00 C,       \ movq    %rax, (%r8)
     4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
@@ -139,8 +144,7 @@
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
 
-
-: C@ ( c addr -- c ) [ 4D C, 0F C, B6 C, 00 C, ] ;  \ movzbq  (%r8), %r8
+: C@ ( c addr -- c ) [ 4D C, 0F C, B6 C, 00 C, ] ;  \ movzxb  (%r8), %r8
 : C! ( c addr --   ) [
     48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
     41 C, 88 C, 00 C,       \ movb    %al (%r8)
@@ -155,8 +159,6 @@
 
 : 2@ (   addr -- d ) DUP CELL+ @ SWAP @ ;
 : 2! ( d addr --   ) SWAP OVER ! CELL+ ! ;
-
-\ : MOVE ( addr1 addr2 u -- ) [ ] ;
 
 
 \ Arithmetic ===================================================================
@@ -315,27 +317,15 @@
 : D0= ( h l -- flag ) 0= ( h flag ) SWAP 0= ( flag flag ) AND ;
 
 
-\ Transient regions ============================================================
+\ Compilation/utility ==========================================================
 
-\ Here: counted:256 PAD:...
+: HERE  (   -- addr ) CP @ ;
+: ALLOT ( n --      ) CP +! ;
+: ALIGN (   --      ) CP @ ALIGNED CP !
+: PAD   (   -- addr ) HERE 100 + ;
 
-: HERE    (      -- addr   ) CP @ ;
-: ALLOT   ( n    --        ) CP +! ;
-: ALIGNED ( addr -- a-addr ) ; \ Byte aligned
-: ALIGN   (      --        ) CP @ ALIGNED CP !
-
-: COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
-: counted ( c-addr1 u -- c-addr2   ) \ Counted string in transient region
-    \ FF MIN \ TODO Limit size to 255
-    DUP HERE     ( c-addr1 u u here  ) C!   \ len
-    HERE 1+ SWAP ( c-addr1 c-addr2 u ) MOVE \ chars
-    HERE
-;
-
-\ TODO skip leading chars
-\ : WORD ( char "<chars>ccc<char>" -- c-addr ) PARSE-NAME counted ;
-
-: PAD (   -- addr ) HERE 100 + ;
+: FLAG-IMM 01 ;
+: FLAG-HIDDEN 02 ;
 
 
 
@@ -456,50 +446,7 @@
 ; IMMEDIATE
 
 
-\ Strings ======================================================================
-
-: CHAR   ( "<spaces>name" -- char )           PARSE-NAME DROP C@ ;
-: [CHAR] ( C: "<spaces>name" -- ) ( -- char ) CHAR POSTPONE LITERAL ; IMMEDIATE
-
-: SLITERAL ( C: c-addr1 u ) ( -- c-addr2 u )
-    >R
-    POSTPONE AHEAD          \ Skip string data
-    R@ HERE >R ALLOT        \ Allocate string and save it's addr
-    POSTPONE THEN
-    R@ POSTPONE LITERAL R>  \ Push c-addr2
-    R@ POSTPONE LITERAL R>  \ Push u
-    ( c-addr1 c-addr2 u ) MOVE \ Copy string data
-; IMMEDIATE
-
-: S" ( C: "ccc<quote>" -- ) ( -- c-addr u )
-    [CHAR] " PARSE POSTPONE SLITERAL ; IMMEDIATE
-
-: ." ( C: "ccc<quote>" -- ) ( -- ) POSTPONE S" ['] TYPE COMPILE, ; IMMEDIATE
-\ FIXME POSTPONE vs ['] XX COMPILE,
-: .( (    "ccc<quote>" -- ) ( -- ) [CHAR] ) PARSE TYPE ;
-
-: C" ( C: "ccc<quote>" -- ) ( -- c-addr   )
-    [CHAR] " PARSE >R
-    POSTPONE AHEAD          \ Skip string data
-    R@ HERE >R              \ Keep addr of counted string
-    DUP C, ALLOT            \ Store length and allocate chars
-    POSTPONE THEN
-    R@ POSTPONE LITERAL     \ Push c-addr2
-    R> CHAR+ R> ( c-addr1 c-addr3 u ) MOVE \ Copy string data
-; IMMEDIATE
-
-: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
-    POSTPONE IF
-    POSTPONE ."
-    POSTPONE TYPE
-    POSTPONE CR
-    POSTPONE ABORT
-    POSTPONE THEN
-; IMMEDIATE
-
-
 \ Defining words ===============================================================
-
 
 : >BODY ( xt -- a-addr ) 6 + ;
 : >code ( nt -- xt     ) 9 + ( len-addr ) DUP C@ ( len-addr len ) + 1+ ;
@@ -553,9 +500,6 @@
 \ : TO    ( x "<spaces>name" -- ) ' >BODY ! ;
 
 
-
-\ DEFER ========================================================================
-
 : EXECUTE ( i*x xt -- j*x ) [
     4C C, 89 C, C0 C,       \ mov   %r8, %rax
     4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
@@ -569,6 +513,7 @@
 : DEFER@ (            xt1    -- xt2 ) >BODY @ ;
 : DEFER! (        xt2 xt1    --     ) >BODY ! ;
 
+\ TODO : read why state matters
 : IS
     STATE @ IF
         POSTPONE ['] POSTPONE DEFER!
@@ -586,13 +531,103 @@
 ; IMMEDIATE
 
 
-\ Consts and vars  =============================================================
+\ Arithmetic/ Utility ==========================================================
 
-0 INVERT CONSTANT TRUE
-0 CONSTANT FALSE
+\ TODO Redo in machine code (?)
+: ABS (    n1 -- u    ) DUP 0< IF NEGATE THEN ;
+: MIN ( n1 n2-- n1|n2 ) 2DUP < IF DROP ELSE NIP THEN ;
+: MAX ( n1 n2-- n1|n2 ) 2DUP > IF DROP ELSE NIP THEN ;
+
+: CMOVE ( c-addr1 c-addr2 u -- ) [
+    4C C, 89 C, C1 C,       \ mov   %r8, %rcx
+    48 C, 8B C, 7D C, 00 C, \ mov   0(%rbp), %rdi
+    48 C, 8B C, 75 C, 08 C, \ mov   8(%rbp), %rsi
+    F3 C, A4 C,             \ rep   movsb
+    4C C, 8B C, 45 C, 10 C, \ mov   16(%rbp), %r8
+    48 C, 8D C, 6D C, 18 C, \ lea   24(%rbp), %rbp
+] ;
+
+: FILL  ( c-addr u char -- ) [
+    4C C, 89 C, C0 C,       \ mov   %r8, %rax
+    48 C, 8B C, 4D C, 00 C, \ mov   0(%rbp), %rcx
+    48 C, 8B C, 7D C, 08 C, \ mov   8(%rbp), %rdi
+    F3 C, AA C,             \ rep   stosb
+    4C C, 8B C, 45 C, 10 C, \ mov   16(%rbp), %r8
+    48 C, 8D C, 6D C, 18 C, \ lea   24(%rbp), %rbp
+] ;
+
+: CMOVE> ( c-addr1 c-addr2 u -- )
+    >R R@ + 1- SWAP R@ + 1- SWAP ( c-addr1+u-1 c-addr2+u-1 )
+    [ FD C, ] R> CMOVE [ FC C, ] \ opcodes for std and cld (movsb direction)
+;
+
+: MOVE  ( c-addr1 c-addr2 u -- ) >R 2DUP > IF R> CMOVE ELSE R> CMOVE> THEN ;
+: ERASE (         c-addr  u -- ) 0 FILL ;
+
+\ TODO Optimized versions that start writing cell by cell until u < 8
+\ Something like (~7) AND FILL-CELLS (with rep movsq)
+\ followed by 7 AND FILL
+
+
+\ Strings ======================================================================
+
 20 CONSTANT BL
-: SPACE BL EMIT ;
-: SPACES 0 DO SPACE LOOP ;
+: SPACE  (   -- ) BL EMIT ;
+: SPACES ( u -- ) 0 DO SPACE LOOP ;
+
+: COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
+
+100 :BUFFER counted-buf \ 1 + 255 (minimal length in the standard)
+
+: counted ( c-addr1 u -- c-addr2 ) \ String to counted-string (transient region)
+    FF MIN \ Limit size to 255
+    DUP HERE     ( c-addr1 u u here  ) C!   \ len
+    counted-buf 1+ SWAP ( c-addr1 c-addr2 u ) MOVE \ chars
+    HERE
+;
+
+\ TODO skip leading chars
+\ : WORD ( char "<chars>ccc<char>" -- c-addr ) PARSE-NAME counted ;
+
+
+: CHAR   ( "<spaces>name" -- char )           PARSE-NAME DROP C@ ;
+: [CHAR] ( C: "<spaces>name" -- ) ( -- char ) CHAR POSTPONE LITERAL ; IMMEDIATE
+
+: SLITERAL ( C: c-addr1 u ) ( -- c-addr2 u )
+    >R
+    POSTPONE AHEAD          \ Skip string data
+    R@ HERE >R ALLOT        \ Allocate string and save it's addr
+    POSTPONE THEN
+    R@ POSTPONE LITERAL R>  \ Push c-addr2
+    R@ POSTPONE LITERAL R>  \ Push u
+    ( c-addr1 c-addr2 u ) MOVE \ Copy string data
+; IMMEDIATE
+
+: S" ( C: "ccc<quote>" -- ) ( -- c-addr u )
+    [CHAR] " PARSE POSTPONE SLITERAL ; IMMEDIATE
+
+: ." ( C: "ccc<quote>" -- ) ( -- ) POSTPONE S" POSTPONE TYPE ; IMMEDIATE
+: .( (    "ccc<quote>" -- ) ( -- ) [CHAR] ) PARSE TYPE ;
+
+: C" ( C: "ccc<quote>" -- ) ( -- c-addr   )
+    [CHAR] " PARSE >R
+    POSTPONE AHEAD          \ Skip string data
+    R@ HERE >R              \ Keep addr of counted string
+    DUP C, ALLOT            \ Store length and allocate chars
+    POSTPONE THEN
+    R@ POSTPONE LITERAL     \ Push c-addr2
+    R> CHAR+ R> ( c-addr1 c-addr3 u ) MOVE \ Copy string data
+; IMMEDIATE
+
+: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
+    POSTPONE IF
+    POSTPONE ."
+    POSTPONE TYPE
+    POSTPONE CR
+    POSTPONE ABORT
+    POSTPONE THEN
+; IMMEDIATE
+
 
 \ Number IO ====================================================================
 
@@ -636,16 +671,14 @@ VARIABLE #idx
     BEGIN # 2DUP D0= UNTIL
 ;
 
-: ABS (    n1 -- u    ) DUP 0< IF NEGATE THEN ;
-: MIN ( n1 n2-- n1|n2 ) 2DUP < IF DROP ELSE NIP THEN ;
-: MAX ( n1 n2-- n1|n2 ) 2DUP > IF DROP ELSE NIP THEN ;
-
 : SIGN (   n -- ) 0< IF [CHAR] - HOLD THEN ;
 : #pad (   n -- ) #sz #idx @ - - BEGIN DUP 0> WHILE BL HOLD 1- REPEAT ;
 : U.   (   u -- )           0 ( ud ) <# #S          #> TYPE SPACE ;
 : .    (   u -- ) DUP ABS S>D (  d ) <# #S ROT SIGN #> TYPE SPACE ;
 : U.R  ( u w -- ) >R           0 ( ud ) <# #S          R> #pad #> TYPE ;
 : .R   ( n w -- ) >R DUP ABS S>D (  d ) <# #S ROT SIGN R> #pad #> TYPE ;
+
+\ : X.   (   u -- ) BASE @ HEX 0 ( ud ) <# # # # # #> TYPE SPACE BASE ! ;
 
 
 \ Tools ========================================================================
@@ -655,7 +688,7 @@ VARIABLE #idx
 : ? ( addr -- ) @ . ;
 
 : .S ( -- )
-    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0= UNTIL DROP
+    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0<= UNTIL DROP
     ELSE DEPTH 0= IF ." EMPTY " ELSE ." UNDERFLOW " THEN THEN
 ;
 
@@ -675,6 +708,9 @@ VARIABLE #idx
 \ ==============================================================================
 \ Interpreter ==================================================================
 
+0 INVERT CONSTANT TRUE
+0 CONSTANT FALSE
+
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
     DUP COUNT find ( c-addr xt flags 0|nt )
     0= IF 2DROP 0 ( c-addr 0 ) EXIT THEN
@@ -682,7 +718,14 @@ VARIABLE #idx
     FLAG-IMM AND IF 1 ELSE -1 THEN ;
 ;
 
-
-
 \ ==============================================================================
+
+
+: HELLO S" Hello, World! " ;
+
+CR HELLO TYPE
+
+HELLO CHAR A FILL
+
+CR HELLO TYPE
 
