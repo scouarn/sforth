@@ -642,7 +642,7 @@ _FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )
         test    %rbx, %rbx
         jz      .L_find_not_found
 
-        movb    8(%rbx), %dl    # Flags
+        movzxb  8(%rbx), %rdx   # Flags
         test    $FLAG_HIDDEN, %dl
         jnz     .L_find_loop    # Hidden word
 
@@ -662,12 +662,14 @@ _FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )
         ret
 
 
-DEFINE_WORD FIND, "FIND"        # ( c-addr u -- 0|nt xt )
+DEFINE_WORD find, "find"   # ( c-addr u -- xt flags 0|nt )
         movq    %r8, %rax
         movq    (%rbp), %rsi
         call    _FIND
-        movq    %rdi, %r8       # xt
-        movq    %rbx, (%rbp)    # nt
+        lea     -8(%rbp), %rbp
+        movq    %rdi, 8(%rbp)   # xt
+        movq    %rdx, (%rbp)    # flag
+        movq    %rbx, %r8       # nt
         ret
 
 

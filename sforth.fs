@@ -319,8 +319,10 @@
 
 \ Here: counted:256 PAD:...
 
-: HERE  (   -- addr ) CP @ ;
-: ALLOT ( n --      ) CP +! ;
+: HERE    (      -- addr   ) CP @ ;
+: ALLOT   ( n    --        ) CP +! ;
+: ALIGNED ( addr -- a-addr ) ; \ Byte aligned
+: ALIGN   (      --        ) CP @ ALIGNED CP !
 
 : COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 : counted ( c-addr1 u -- c-addr2   ) \ Counted string in transient region
@@ -334,6 +336,7 @@
 \ : WORD ( char "<chars>ccc<char>" -- c-addr ) PARSE-NAME counted ;
 
 : PAD (   -- addr ) HERE 100 + ;
+
 
 
 \ Control flow =================================================================
@@ -362,12 +365,13 @@
 
 \ POSTPONE =====================================================================
 
-: ' ( "<spaces>name" -- xt ) PARSE-NAME FIND NIP ;
+: ' ( "<spaces>name" -- xt ) PARSE-NAME find IF DROP ELSE 2DROP 0 THEN ;
 
 : POSTPONE ( "<spaces>name" -- )
-    PARSE-NAME FIND SWAP ( xt nt )
-    8 + C@ FLAG-IMM AND \ Is imm?
-    IF \ Compile code that executes xt
+    PARSE-NAME find ( xt flags nt )
+    0= IF BYE THEN \ TODO handle error
+
+    ( flags ) FLAG-IMM AND IF \ Compile code that executes xt
         COMPILE,
     ELSE \ Compile code that compiles xt (default compilation behaviour)
         [ ' LITERAL  COMPILE, ]          \ Compile DPUSH $xt
@@ -656,12 +660,14 @@ VARIABLE #idx
 ;
 
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
-: SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND ( nt xt )
-    OVER 0= IF ." NOT FOUND " 2DROP EXIT THEN
-    CR ." prev:   " OVER @ ?DUP IF NAME>STRING TYPE ELSE ." (none)" THEN
-    CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
-    CR ." xt:     " .X
+: SEE ( "<spaces>ccc<space>" -- )
+    PARSE-NAME find ( xt flag 0|nt )
+    ?DUP 0= IF ." NOT FOUND " 2DROP EXIT THEN ( xt flag 0|nt )
+
+    CR ." prev:   " DUP @ ?DUP IF NAME>STRING TYPE ELSE ." (none)" THEN
+    CR ." imm:    " SWAP FLAG-IMM AND IF ." yes" ELSE ." no" THEN
     CR ." nt:     " .X
+    CR ." xt:     " .X
 ;
 
 
@@ -669,7 +675,14 @@ VARIABLE #idx
 \ ==============================================================================
 \ Interpreter ==================================================================
 
-\ TODO read FIND-NAME proposal
+: FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
+    DUP COUNT find ( c-addr xt flags 0|nt )
+    0= IF 2DROP 0 ( c-addr 0 ) EXIT THEN
+    ( c-addr xt flags ) ROT DROP ( xt flags )
+    FLAG-IMM AND IF 1 ELSE -1 THEN ;
+;
+
+
 
 \ ==============================================================================
 
