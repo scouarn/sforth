@@ -7,9 +7,9 @@
 \ >NUMBER and standard number parser
 \ ENVIRONMENT?
 \ TO and VALUE
+\ BYE instead of ABORT in bootstrap interpreter
+\ When we have the new interpreter : No prompt/echo in bootstrap
 \ Tests
-
-: BREAK CC C, ; IMMEDIATE \ Int3 / Breakpoint / Sigtrap on Linux
 
 \ Stack ========================================================================
 
@@ -151,6 +151,17 @@
     4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
+
+
+: ON  ( addr -- ) [
+    49 C, C7 C, 00 C, FF C, FF C, FF C, FF C, \ mov $-1, %r8
+    4C C, 8B C, 45 C, 00 C, sp+               \ mov   (%rbp), %r8
+] ;
+
+: OFF ( addr -- ) [
+    49 C, C7 C, 00 C, 00 C, 00 C, 00 C, 00 C, \ mov $0,  %r8
+    4C C, 8B C, 45 C, 00 C, sp+               \ mov   (%rbp), %r8
+] ; 
 
 : CHARS (    n1 -- n2    ) ; \ Do nothing
 : CELLS (    n1 -- n2    ) [ 49 C, C1 C, E0 C, 03 C, ] ; \ shl  $3, %r8
@@ -319,14 +330,16 @@
 
 \ Compilation/utility ==========================================================
 
-: HERE  (   -- addr ) CP @ ;
-: ALLOT ( n --      ) CP +! ;
-: ALIGN (   --      ) CP @ ALIGNED CP !
-: PAD   (   -- addr ) HERE 100 + ;
+: BREAK ( -- SIGTRAP ) CC C, ; IMMEDIATE
+: HERE   (   -- addr ) CP @ ;
+: ALLOT  ( n --      ) CP +! ;
+: ALIGN  (   --      ) CP @ ALIGNED CP ! ;
+: PAD    (   -- addr ) HERE 100 + ;
+: UNUSED (   -- u    ) brk @ HERE - ;
+: USED   (   -- u    ) HERE CP0 - ;
 
 : FLAG-IMM 01 ;
 : FLAG-HIDDEN 02 ;
-
 
 
 \ Control flow =================================================================
@@ -416,22 +429,27 @@
     R> HERE
 ; IMMEDIATE
 
-
-\ TODO Test with signed and unsigned indices/limits
+\ FIXME : If the loop index did not cross the boundary between the loop limit
+\ minus one and the loop limit, continue execution at the beginning of the loop.
 
 : +LOOP ( C: leave-orig dest -- ) ( n -- ) ( R: leave lim i1 -- | leave lim i2 )
         POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
         POSTPONE 2DUP ( i2 lim i2 lim )
         POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
-        POSTPONE =              ( flag )
+        POSTPONE =              ( flag ) \ FIXME
         branch0 resolve>        \ Resolve dest: 0branch to DO
         HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
         POSTPONE UNLOOP
 ; IMMEDIATE
 
 : LOOP  ( C: leave-orig dest -- ) ( -- ) ( R: leave lim i1 -- | lim i2 )
-        1 POSTPONE LITERAL
-        POSTPONE +LOOP
+        POSTPONE R> POSTPONE 1+ POSTPONE R> ( i2 lim )
+        POSTPONE 2DUP ( i2 lim i2 lim )
+        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
+        POSTPONE =              ( flag )
+        branch0 resolve>        \ Resolve dest: 0branch to DO
+        HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
+        POSTPONE UNLOOP
 ; IMMEDIATE
 
 
@@ -577,7 +595,7 @@
 
 : COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
-100 :BUFFER counted-buf \ 1 + 255 (minimal length in the standard)
+100 BUFFER: counted-buf \ 1 + 255 (minimal length in the standard)
 
 : counted ( c-addr1 u -- c-addr2 ) \ String to counted-string (transient region)
     FF MIN \ Limit size to 255
@@ -618,6 +636,7 @@
     R@ POSTPONE LITERAL     \ Push c-addr2
     R> CHAR+ R> ( c-addr1 c-addr3 u ) MOVE \ Copy string data
 ; IMMEDIATE
+
 
 : ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
     POSTPONE IF
@@ -677,9 +696,7 @@ VARIABLE #idx
 : .    (   u -- ) DUP ABS S>D (  d ) <# #S ROT SIGN #> TYPE SPACE ;
 : U.R  ( u w -- ) >R           0 ( ud ) <# #S          R> #pad #> TYPE ;
 : .R   ( n w -- ) >R DUP ABS S>D (  d ) <# #S ROT SIGN R> #pad #> TYPE ;
-
-\ : X.   (   u -- ) BASE @ HEX 0 ( ud ) <# # # # # #> TYPE SPACE BASE ! ;
-
+: .X   (   u -- ) BASE @ SWAP HEX 0 <# 10 0 DO # LOOP #> TYPE SPACE BASE ! ;
 
 \ Tools ========================================================================
 
@@ -703,11 +720,44 @@ VARIABLE #idx
     CR ." xt:     " .X
 ;
 
+: .byte (   char -- ) 0 <# # # #> SPACE TYPE ;
+: .addr (   addr -- ) 0 <# 10 0 DO # LOOP #> CR TYPE [CHAR] : EMIT ;
+: .char (   char -- ) DUP 20 < OVER 7E > OR IF DROP [CHAR] . THEN EMIT ;
+: DUMP  ( addr u -- )
+    BASE @ >R HEX
+    BEGIN DUP WHILE
+        OVER .addr
+        8 0 DO DUP I U> IF OVER I + C@ .byte ELSE 3 SPACES THEN LOOP \ bytes
+        2 SPACES
+        8 0 DO DUP I U> IF OVER I + C@ .char ELSE LEAVE    THEN LOOP \ chars
+        DUP 8 U< IF DROP 0 ELSE 8 - THEN \ dec u
+        SWAP 8 + SWAP \ inc addr
+    REPEAT
+    CR R> BASE !
+;
+
+: WORDS ( -- )
+    CR LATEST @
+    BEGIN DUP WHILE DUP NAME>STRING TYPE SPACE @ REPEAT
+    CR
+;
+
+
+: FORGET-NAME ( nt -- ) DUP @ LATEST ! CP ! ;
+
+: FORGET ( "<spaces>name" -- )
+    PARSE-NAME find ( xt flags 0|nt )
+    DUP IF FORGET-NAME THEN 2DROP
+;
+
+: MARKER HERE CREATE , DOES> @ FORGET-NAME ;
 
 
 \ ==============================================================================
 \ Interpreter ==================================================================
 
+
+0 1 - CONSTANT -ONE
 0 INVERT CONSTANT TRUE
 0 CONSTANT FALSE
 
@@ -715,17 +765,13 @@ VARIABLE #idx
     DUP COUNT find ( c-addr xt flags 0|nt )
     0= IF 2DROP 0 ( c-addr 0 ) EXIT THEN
     ( c-addr xt flags ) ROT DROP ( xt flags )
-    FLAG-IMM AND IF 1 ELSE -1 THEN ;
+    FLAG-IMM AND IF 1 ELSE -ONE THEN ;
 ;
 
-\ ==============================================================================
+: greet ." Welcome to Scouarn Forth" CR
+        UNUSED . ." bytes free" CR CR
+;
 
-
-: HELLO S" Hello, World! " ;
-
-CR HELLO TYPE
-
-HELLO CHAR A FILL
-
-CR HELLO TYPE
-
+\ Start ========================================================================
+greet
+echo ON

@@ -174,7 +174,7 @@ DEFINE_WORD KEY, "KEY"          # ( -- char )
         ret
 
 
-DEFINE_WORD DotX, ".X"           # ( u -- ) Print hex unsigned with leading 0s
+DEFINE_WORD DotX, "." # ( u -- ) (debug) Print hex unsigned with leading 0s
         movq    $16, %rcx
         movq    %r8, %rax
         DPOP    %r8
@@ -210,7 +210,21 @@ DEFINE_WORD CP, "CP"            # ( -- addr )
 curr_def: .quad user_dict
 
 
-DEFINE_WORD LATEST, "LATEST"  # ( -- addr )
+DEFINE_WORD CPZero, "CP0"       # ( -- addr )
+        DPUSH   %r8
+        mov     $user_dict, %r8
+        ret
+
+
+DEFINE_WORD brk, "brk"          # ( -- addr ) End of dict
+                                # Can be accessed for mmap
+        DPUSH   %r8
+        movq    $dict_end, %r8
+        ret
+dict_end: .quad (user_dict+DICT_SZ)
+
+
+DEFINE_WORD LATEST, "LATEST"    # ( -- addr )
         DPUSH   %r8
         movq    $last_def, %r8
         ret
@@ -334,6 +348,13 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 
 ## Parsing
 
+DEFINE_WORD echo, "echo"
+        DPUSH   %r8
+        movq    $do_echo, %r8
+        ret
+do_echo: .quad 0
+
+
 DEFINE_WORD SupIN, ">IN"
         DPUSH   %r8
         movq    $source_idx, %r8
@@ -353,12 +374,18 @@ source_buf:
         .byte 0
 
 
+_ECHO: # Emit if do_echo is true
+        cmpq    $0, do_echo
+        jne     _EMIT
+        ret
+
+
 _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         # %rbx := Number of non special chars read (one newline -> 1)
-        movb    $'>', %al       # Prompt TODO
-        call    _EMIT
+        movb    $'>', %al
+        call    _ECHO
         movb    $' ', %al
-        call    _EMIT
+        call    _ECHO
 
         xorq    %rbx, %rbx      # Total number of chars read
         movq    $source_buf, %rdi
@@ -386,11 +413,11 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         dec     %rdi
         push    %rdi
         movb    $'\b', %al
-        call    _EMIT
+        call    _ECHO
         movb    $' ', %al
-        call    _EMIT
+        call    _ECHO
         movb    $'\b', %al
-        call    _EMIT
+        call    _ECHO
         pop     %rdi
         jmp     .Lrefill_loop
 .Lrefill_not_del:
@@ -408,7 +435,7 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         stosb                   # Add to buffer
 
         push    %rdi
-        call    _EMIT         # Echo
+        call    _ECHO           # Echo
         pop     %rdi
 
         cmpq    $(source_buf+SOURCE_SZ), %rdi
@@ -535,10 +562,12 @@ DEFINE_WORD QUIT, "QUIT"
         call    _REFILL
         test    %rbx, %rbx
         jz      xt_BYE                  # No return
-        DPUSH   %r8
-        movq    $' ', %r8
-        call    xt_EMIT
+        movb    $' ', %al
+        call    _ECHO
         call    xt_INTERPRET
+
+        cmpq    $0, do_echo             # Ignore if echo is off
+        jz      .Lquit_loop
 
         cmpq    $0, state
         jnz     .Lquit_compiling
@@ -563,6 +592,7 @@ DEFINE_WORD QUIT, "QUIT"
 
 DEFINE_WORD ABORT, "ABORT"
         movq    $dstack_start, %rbp     # Empty data stack
+        xor     %r8, %r8
         jmp     xt_QUIT                 # No return
 
 
