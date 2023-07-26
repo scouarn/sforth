@@ -4,8 +4,7 @@
 
 \ TODO
 \ CASE ENDCASE OF ENDOF (see https://forth-standard.org/standard/rationale)
-\ Numeric output <# # #S #>
-\ Numeric input >NUMBER and standard number parser
+\ >NUMBER and standard number parser
 \ ENVIRONMENT?
 \ TO and VALUE
 \ Tests
@@ -214,14 +213,16 @@
     48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
     49 C, F7 C, F0 C,           \ div   %r8
     49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
+    sp+
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
-: SM/REM ( u n -- rem quot ) [
+: SM/REM ( d n -- rem quot ) [
     48 C, 8B C, 45 C, 08 C,     \ movq  8(%rbp), %rax       u_low
     48 C, 8B C, 55 C, 00 C,     \ movq  0(%rbp), %rdx       u_high
     49 C, F7 C, F8 C,           \ idiv  %r8
     49 C, 89 C, C0 C,           \ movq  %rax, %r8           quot
+    sp+
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
@@ -309,14 +310,30 @@
 : 0>= (     n -- flag ) [ cc-ge 0cmp, ] ;
 : 0<= (     n -- flag ) [ cc-le 0cmp, ] ;
 
-\ TODO: WITHIN
+\ TODO  WITHIN
 
-\ Utilities ====================================================================
+: D0= ( h l -- flag ) 0= ( h flag ) SWAP 0= ( flag flag ) AND ;
+
+
+\ Transient regions ============================================================
+
+\ Here: counted:256 PAD:...
 
 : HERE  (   -- addr ) CP @ ;
 : ALLOT ( n --      ) CP +! ;
-: PAD   (   -- addr ) SP@ 100 - ;
-: COUNT ( c-addr1 -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
+
+: COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
+: counted ( c-addr1 u -- c-addr2   ) \ Counted string in transient region
+    \ FF MIN \ TODO Limit size to 255
+    DUP HERE     ( c-addr1 u u here  ) C!   \ len
+    HERE 1+ SWAP ( c-addr1 c-addr2 u ) MOVE \ chars
+    HERE
+;
+
+\ TODO skip leading chars
+\ : WORD ( char "<chars>ccc<char>" -- c-addr ) PARSE-NAME counted ;
+
+: PAD (   -- addr ) HERE 100 + ;
 
 
 \ Control flow =================================================================
@@ -542,7 +559,7 @@
     FF C, D0 C,             \ call  *%rax
 ] ;
 
-: EXIT ( -- ) [ 48 C, 83 C, C4 C, 08 C, ] ; \ add $24, %rsp
+: EXIT ( -- ) [ 48 C, 83 C, C4 C, 08 C, ] ; \ add $8, %rsp
 
 : DEFER  (    "<spaces>name" --     ) CREATE 0 , DOES> @ EXECUTE ;
 : DEFER@ (            xt1    -- xt2 ) >BODY @ ;
@@ -565,39 +582,13 @@
 ; IMMEDIATE
 
 
-\ Tools ========================================================================
-
-: DEPTH ( -- +n ) SP@ S0 SWAP - 8/ ;
-
-: .S ( -- )
-    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR .X 1- DUP 0= UNTIL DROP
-    ELSE DEPTH 0= IF ." EMPTY " ELSE ." UNDERFLOW " THEN THEN
-;
-
-: ? ( addr -- ) @ .X ;
-
-
-: NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
-
-
-: SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND ( nt xt )
-    OVER 0= IF ." NOT FOUND " 2DROP EXIT THEN
-    CR ." prev:   " OVER @ ?DUP IF NAME>STRING TYPE ELSE ." (none)" THEN
-    CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
-    CR ." xt:     " .X
-    CR ." nt:     " .X
-;
-
-: . .X ;
-
-
 \ Consts and vars  =============================================================
 
 0 INVERT CONSTANT TRUE
 0 CONSTANT FALSE
 20 CONSTANT BL
 : SPACE BL EMIT ;
-
+: SPACES 0 DO SPACE LOOP ;
 
 \ Number IO ====================================================================
 
@@ -606,6 +597,79 @@ VARIABLE BASE
 : DECIMAL ( -- ) 0A BASE ! ;
 DECIMAL
 
+100 CONSTANT #sz
+#sz BUFFER: #buf
+VARIABLE #idx
+
+: <# ( -- ) #sz #idx ! ;
+
+: #> ( xd -- c-addr u )
+    2DROP
+    #idx @ #buf + ( c-addr )
+    #sz #idx @ - ( c-addr u )
+;
+
+: HOLD ( char -- )
+    1 #idx -! \ dec idx
+    #buf #idx @ + ( char c-addr ) C! \ write char
+;
+
+: HOLDS ( c-addr u -- )
+    \ #sz #idx - MIN \ TODO Limit to the remaining space in the buffer
+    DUP #idx -! \ dec idx
+    #buf #idx @ + ( c-addr1 u c-addr2 ) SWAP MOVE \ write data
+;
+
+: >digit ( u -- char ) DUP 9 > IF [CHAR] A + 0A - ELSE [CHAR] 0 + THEN ;
+
+: # ( ud1 -- ud2 )
+    BASE @ UM/MOD ( rem quot ) \ TODO Handle double division
+    SWAP >digit HOLD ( quot )
+    0 ( ud2 )
+;
+
+: #S ( ud1 -- ud2 )
+    BEGIN # 2DUP D0= UNTIL
+;
+
+: ABS (    n1 -- u    ) DUP 0< IF NEGATE THEN ;
+: MIN ( n1 n2-- n1|n2 ) 2DUP < IF DROP ELSE NIP THEN ;
+: MAX ( n1 n2-- n1|n2 ) 2DUP > IF DROP ELSE NIP THEN ;
+
+: SIGN (   n -- ) 0< IF [CHAR] - HOLD THEN ;
+: #pad (   n -- ) #sz #idx @ - - BEGIN DUP 0> WHILE BL HOLD 1- REPEAT ;
+: U.   (   u -- )           0 ( ud ) <# #S          #> TYPE SPACE ;
+: .    (   u -- ) DUP ABS S>D (  d ) <# #S ROT SIGN #> TYPE SPACE ;
+: U.R  ( u w -- ) >R           0 ( ud ) <# #S          R> #pad #> TYPE ;
+: .R   ( n w -- ) >R DUP ABS S>D (  d ) <# #S ROT SIGN R> #pad #> TYPE ;
+
+
+\ Tools ========================================================================
+
+: DEPTH ( -- +n ) SP@ S0 SWAP - 8/ ;
+
+: ? ( addr -- ) @ . ;
+
+: .S ( -- )
+    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0= UNTIL DROP
+    ELSE DEPTH 0= IF ." EMPTY " ELSE ." UNDERFLOW " THEN THEN
+;
+
+: NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
+: SEE ( "<spaces>ccc<space>" -- ) PARSE-NAME FIND ( nt xt )
+    OVER 0= IF ." NOT FOUND " 2DROP EXIT THEN
+    CR ." prev:   " OVER @ ?DUP IF NAME>STRING TYPE ELSE ." (none)" THEN
+    CR ." imm:    " OVER 8 + C@ FLAG-IMM AND IF ." yes" ELSE ." no" THEN
+    CR ." xt:     " .X
+    CR ." nt:     " .X
+;
+
+
+
 \ ==============================================================================
 \ Interpreter ==================================================================
+
+\ TODO read FIND-NAME proposal
+
+\ ==============================================================================
 
