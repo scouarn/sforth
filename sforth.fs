@@ -2,12 +2,12 @@
 : ( 29 scan-until ; IMMEDIATE
 
 \ TODO:
-\ SOURCE vs TIB -> EVALUATE (read https://www.forth.com/starting-forth/10-input-output-operators/)
 \ CASE ENDCASE OF ENDOF (see https://forth-standard.org/standard/rationale)
 \ >NUMBER and standard number parser
 \ ENVIRONMENT?
 \ TO and VALUE
 \ When we have the new interpreter : Remove echo from bootstrap
+\ QUIT: check for stack overflow
 \ Dyn alloc with mmap when ALLOT which becomes a primitive called by , and C,
 \ Write the system label
 \ Run the test suite
@@ -101,7 +101,7 @@
 
 : 2R> ( -- x1 x2 )   ( R: x1 x2 -- )
     48 C, 8D C, 6D C, F0 C, \ lea   -16(%rbp), %rbp
-    4C C, 89 C, 45 C, 00 C, \ mov   %r8, 8(%rbp)
+    4C C, 89 C, 45 C, 08 C, \ mov   %r8, 8(%rbp)
     8F C, 45 C, 00 C,       \ pop  (%rbp)
     41 C, 58 C,             \ pop  %r8
 ; IMMEDIATE
@@ -713,14 +713,17 @@ VARIABLE #idx
 
 \ Tools ========================================================================
 
-: DEPTH ( -- +n ) SP@ S0 SWAP - 8/ ;
+: DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ NOTE: Not using 8/ because it's unsigned
 
 : ? ( addr -- ) @ . ;
 
 : .S ( -- )
-    DEPTH 0> IF DEPTH BEGIN S0 OVER 1+ CELLS - @ CR . 1- DUP 0<= UNTIL DROP
-    ELSE DEPTH 0= IF ." EMPTY " ELSE ." UNDERFLOW " THEN THEN
+    DEPTH 0< IF ." UNDERFLOW " EXIT THEN
+    DEPTH 0= IF ." EMPTY "     EXIT THEN
+    DEPTH 1 ?DO S0 I 1+ CELLS - @ . DUP LOOP
+    DUP . \ Make shure %r8 is printed and not -8(%rbp)
 ;
+
 
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
 : SEE ( "<spaces>ccc<space>" -- )
@@ -784,14 +787,20 @@ VARIABLE #idx
     POSTPONE THEN
 ; IMMEDIATE
 
-VARIABLE source-id
-: SOURCE-ID ( -- 0|-1 ) source-id @ ;
+VARIABLE (source-id)
+: SOURCE-ID ( -- 0|-1     ) (source-id) @ ;
+: SOURCE    ( -- c-addr u ) IN @ #IN @ ;
+: REFILL    ( -- flag     ) SOURCE-ID 0= IF REFILL ELSE FALSE THEN ;
 
-\ TODO Depends on the value of SOURCE-ID -> case of
-: SOURCE ( -- c-addr u )
-    SOURCE-ID 0= IF ( ... ) THEN
-    TIB #TIB @
+: EVALUATE ( i*x c-addr u -- j*x )
+    SOURCE 2>R >IN @ SOURCE-ID 2>R \ Save input
+    -ONE (source-id) ! 0 >IN ! #IN ! IN !  \ Set source to the string
+    INTERPRET
+    2R> >IN ! (source-id) ! 2R> IN ! #IN ! \ Restore input
 ;
+
+\ : SAVE-INPUT ( -- xn ... x1 n ) ;
+\ : RESTORE-INPUT ( xn ... x1 n -- flag ) TRUE ;
 
 
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )

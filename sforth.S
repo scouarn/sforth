@@ -15,7 +15,7 @@
 .equ DSTACK_SZ, 0x4000 # TODO: dynamic allocation using mmap syscall
 .equ DICT_SZ,   0x4000 # TODO: dynamic allocation using mmap syscall
 
-.equ SOURCE_SZ, 256
+.equ TIB_SZ, 256
 .equ WORD_SZ,   256
 
 .equ FLAG_IMM,    0x01
@@ -102,17 +102,19 @@ DEFINE_CONST    CPZero,         "CP0",          dict_start
 DEFINE_CONST    CPOne,          "CP1",          user_dict_start
 DEFINE_CONST    brk,            "brk",          dict_end
 DEFINE_CONST    echo,           "echo",         do_echo
-DEFINE_CONST    SupIN,          ">IN",          source_idx
-DEFINE_CONST    TIB,            "TIB",          source_buf
-DEFINE_CONST    HashTIB,        "\#TIB",        source_cnt
-
 dict_end:       .quad (user_dict_start+DICT_SZ)
 curr_def:       .quad user_dict_start
 state:          .quad 0
-source_cnt:     .quad 0 # Size of the current line
 do_echo:        .quad 0
+
+DEFINE_CONST    IN,             "IN",           source
+DEFINE_CONST    SupIN,          ">IN",          source_idx
+DEFINE_CONST    HashIN,         "\#IN",         source_cnt
+DEFINE_CONST    TIB,            "TIB",          tib
+source:         .quad tib
 source_idx:     .quad 0
-source_buf:     .skip (SOURCE_SZ+1)
+source_cnt:     .quad 0
+tib:            .skip (TIB_SZ+1)
 
 
 ## IO
@@ -297,29 +299,22 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 
 ## Parsing
 
-DEFINE_WORD SOURCE, "SOURCE" # ( -- c-addr u )
-        DPUSH   %r8
-        movq    $source_buf, %r8
-        DPUSH   %r8
-        movq    source_cnt, %r8
-        ret
-
-
 _ECHO: # Emit if do_echo is true
         cmpq    $0, do_echo
         jne     _EMIT
         ret
 
 
-_REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
+_REFILL: # ( -- ) Read line in source buff, update source_idx and source_cnt
         # %rbx := Number of non special chars read (one newline -> 1)
+
         movb    $'>', %al
         call    _ECHO
         movb    $' ', %al
         call    _ECHO
 
         xorq    %rbx, %rbx      # Total number of chars read
-        movq    $source_buf, %rdi
+        movq    $tib, %rdi
 
 .Lrefill_loop:
         push    %rdi            # Read one char
@@ -339,7 +334,7 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
 
         cmpb    $0x7f, %al      # DEL
         jne     .Lrefill_not_del
-        cmpq    $source_buf, %rdi # Ignore DEL on first col
+        cmpq    $tib, %rdi # Ignore DEL on first col
         je      .Lrefill_loop
         dec     %rdi
         push    %rdi
@@ -369,12 +364,12 @@ _REFILL: # ( -- ) Read line in source_buf, update source_idx and source_cnt
         call    _ECHO           # Echo
         pop     %rdi
 
-        cmpq    $(source_buf+SOURCE_SZ), %rdi
+        cmpq    $(tib+TIB_SZ), %rdi
         jl      .Lrefill_loop   # Stop on end of buffer
 
 .Lrefill_end:
         movq    $0, source_idx
-        subq    $source_buf, %rdi
+        subq    $tib, %rdi
         movq    %rdi, source_cnt
         ret
 
@@ -395,14 +390,15 @@ DEFINE_WORD SCAN_UNTIL, "scan-until"    # ( char "ccc<char>" -- )
 _PARSE:  # bl:char -- rdi:c-addr rcx:u
         movq    source_idx, %rsi
         movq    source_cnt, %rdx
-        leaq    source_buf(%rsi), %rdi  # c-addr
+        movq    source, %r15
+        leaq    (%r15,%rsi), %rdi  # c-addr
         xorq    %rcx, %rcx              # u
 
 .Lparse_loop: # Scan until end of buffer or <char> is found
         cmpq    %rdx, %rsi
         jge     .Lparse_end
 
-        movb    source_buf(%rsi), %al
+        movb    (%r15,%rsi), %al
         inc     %rsi
         inc     %rcx
         cmpb    %al, %bl
@@ -428,10 +424,11 @@ DEFINE_WORD SCAN_WHILE, "scan-while"    # ( char "<chars>ccc" -- "ccc" )
 _SKIP:  # bl:char
         movq    source_idx, %rsi
         movq    source_cnt, %rdx
+        movq    source, %r15
 .Lskip_loop:
         cmpq    %rdx, %rsi
         jge     .Lskip_end
-        cmpb    $' ', source_buf(%rsi)
+        cmpb    $' ', (%r15,%rsi)
         jne     .Lskip_end
         incq    %rsi
         jmp     .Lskip_loop
