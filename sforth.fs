@@ -1,15 +1,17 @@
-: DROP [ 4C C, 8B C, 45 C, 00 C, 48 C, 8D C, 6D C, 08 C, ] ;
-: \ 0A PARSE DROP DROP ; IMMEDIATE
-: ( 29 PARSE DROP DROP ; IMMEDIATE
+: \ 0A scan-until ; IMMEDIATE
+: ( 29 scan-until ; IMMEDIATE
 
-\ TODO
+\ TODO:
+\ SOURCE vs TIB -> EVALUATE (read https://www.forth.com/starting-forth/10-input-output-operators/)
 \ CASE ENDCASE OF ENDOF (see https://forth-standard.org/standard/rationale)
 \ >NUMBER and standard number parser
 \ ENVIRONMENT?
 \ TO and VALUE
-\ BYE instead of ABORT in bootstrap interpreter
-\ When we have the new interpreter : No prompt/echo in bootstrap
-\ Tests
+\ When we have the new interpreter : Remove echo from bootstrap
+\ Dyn alloc with mmap when ALLOT which becomes a primitive called by , and C,
+\ Write the system label
+\ Run the test suite
+
 
 \ Stack ========================================================================
 
@@ -19,11 +21,13 @@
 \ TODO how is the reg encoded ?
 \ : >reg ( off reg ) [ ?? C, 8B C, 45 C, C, ] ; \ mov off(%rbp), reg
 \ : reg> ( off reg ) [ ?? C, 89 C, 45 C, C, ] ; \ mov reg, off(%rbp)
+\ : >top ; mov xx, %r8
+\ : top> ; mov %r8, xx
 
-\ : DROP ( x  --   ) [ 4C C, 8B C, 45 C, 00 C, sp+ ] ; \ mov (%rbp), %r8
-: DUP  ( x     -- x x      ) [ sp- 4C C, 89 C, 45 C, 00 C, ] ; \ mov %r8, (%rbp)
-: SWAP ( x1 x2 -- x2 x1    ) [ 4C C, 87 C, 45 C, 00 C, ] ; \ xchg %r8, (%rbp)
-: NIP  ( x1 x2   -- x2     ) [ sp+ ] ;
+: DROP (    x  --       ) [ 4C C, 8B C, 45 C, 00 C, sp+ ] ; \ mov (%rbp), %r8
+: DUP  (    x  -- x  x  ) [ sp- 4C C, 89 C, 45 C, 00 C, ] ; \ mov %r8, (%rbp)
+: SWAP ( x1 x2 -- x2 x1 ) [ 4C C, 87 C, 45 C, 00 C, ] ; \ xchg %r8, (%rbp)
+: NIP  ( x1 x2 -- x2    ) [ sp+ ] ;
 
 : PICK ( xu...x1 x0 u -- xu...x1 x0 xu ) [
      4E C, 8B C, 44 C, C5 C, 00 C, \ mov (%rbp, %r8, 8), %r8
@@ -48,7 +52,7 @@
     48 C, 89 C, 45 C, 08 C, \ mov     %rax, 8(%rbp)
 ] ;
 
-: -ROT ( x1 x2 x3 -- x2       ) [
+: -ROT ( x1 x2 x3 -- x3 x1 x2 ) [
     48 C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %rax
     4C C, 89 C, 45 C, 08 C, \ mov     %r8, 8(%rbp)
     4C C, 8B C, 45 C, 00 C, \ mov     (%rbp), %r8
@@ -123,25 +127,37 @@
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
 
-: H! ( x addr --   ) [ \ Store Half cell (4bytes)
+: H! ( x addr -- ) [ \ Store Half cell (4bytes)
     48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
     41 C, 89 C, 00 C,       \ movq    %rax, (%r8)
     4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
 
-: +! ( n addr --   ) [
+: +! ( n addr -- ) [
     48 C, 8B C, 45 C, 00 C, \ movq    (%rbp), %rax
     49 C, 01 C, 00 C,       \ addq    %rax, (%r8)
     4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
 
-: -! ( n addr --   ) [
+: -! ( n addr -- ) [
     48 C, 8B C, 45 C, 00 C, \ movq    (%rbp), %rax
     49 C, 29 C, 00 C,       \ subq    %rax, (%r8)
     4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: 1+! ( addr -- ) [
+    49 C, FF C, 00 C,       \ incq    (%r8)
+    4C C, 8B C, 45 C, 00 C, \ mov     (%rbp), %r8
+    sp+
+] ;
+
+: 1-! ( addr -- ) [
+    49 C, FF C, 08 C,       \ decq    (%r8)
+    4C C, 8B C, 45 C, 00 C, \ mov     (%rbp), %r8
+    sp+
 ] ;
 
 : C@ ( c addr -- c ) [ 4D C, 0F C, B6 C, 00 C, ] ;  \ movzxb  (%r8), %r8
@@ -154,12 +170,12 @@
 
 
 : ON  ( addr -- ) [
-    49 C, C7 C, 00 C, FF C, FF C, FF C, FF C, \ mov $-1, %r8
+    49 C, C7 C, 00 C, FF C, FF C, FF C, FF C, \ mov $-1, (%r8)
     4C C, 8B C, 45 C, 00 C, sp+               \ mov   (%rbp), %r8
 ] ;
 
 : OFF ( addr -- ) [
-    49 C, C7 C, 00 C, 00 C, 00 C, 00 C, 00 C, \ mov $0,  %r8
+    49 C, C7 C, 00 C, 00 C, 00 C, 00 C, 00 C, \ mov $0, (%r8)
     4C C, 8B C, 45 C, 00 C, sp+               \ mov   (%rbp), %r8
 ] ; 
 
@@ -336,10 +352,18 @@
 : ALIGN  (   --      ) CP @ ALIGNED CP ! ;
 : PAD    (   -- addr ) HERE 100 + ;
 : UNUSED (   -- u    ) brk @ HERE - ;
-: USED   (   -- u    ) HERE CP0 - ;
 
 : FLAG-IMM 01 ;
 : FLAG-HIDDEN 02 ;
+
+: EXECUTE ( i*x xt -- j*x ) [
+    4C C, 89 C, C0 C,       \ mov   %r8, %rax
+    4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
+    sp+
+    FF C, D0 C,             \ call  *%rax
+] ;
+
+: EXIT ( -- ) [ 48 C, 83 C, C4 C, 08 C, ] ; \ add $8, %rsp
 
 
 \ Control flow =================================================================
@@ -368,6 +392,8 @@
 
 \ POSTPONE =====================================================================
 
+: BL 20 ;
+: PARSE-NAME ( char "<chars>ccc<char>" -- c-addr u ) BL scan-while BL PARSE ;
 : ' ( "<spaces>name" -- xt ) PARSE-NAME find IF DROP ELSE 2DROP 0 THEN ;
 
 : POSTPONE ( "<spaces>name" -- )
@@ -382,10 +408,8 @@
     THEN
 ; IMMEDIATE
 
-
 : ['] ( C: "<spaces>name" -- ) ( -- xt ) ' POSTPONE LITERAL ; IMMEDIATE
 : [COMPILE] ( C: "<spaces>name" -- ) ' COMPILE, ; IMMEDIATE
-
 
 
 \ DO loops =====================================================================
@@ -402,7 +426,7 @@
     FF C, 64 C, 24 C, 10 C, \ jmp *16(%rsp)
 ; IMMEDIATE
 
-\ TODO Rewrite without so many POSTPONEs
+\ TODO Refactor DO ?DO and LOOP +LOOP
 
 : DO  ( C: -- leave-orig dest ) ( lim idx -- ) ( R: -- leave lim idx )
     \ Reserve a cell for the leave address
@@ -431,7 +455,6 @@
 
 \ FIXME : If the loop index did not cross the boundary between the loop limit
 \ minus one and the loop limit, continue execution at the beginning of the loop.
-
 : +LOOP ( C: leave-orig dest -- ) ( n -- ) ( R: leave lim i1 -- | leave lim i2 )
         POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
         POSTPONE 2DUP ( i2 lim i2 lim )
@@ -451,7 +474,6 @@
         HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
         POSTPONE UNLOOP
 ; IMMEDIATE
-
 
 : I ( -- idx ) ( R: leave lim idx -- leave lim idx )
     sp-   4C C, 89 C, 45 C, 00 C, \ mov    r8, (%rbp)
@@ -497,7 +519,6 @@
     POSTPONE R> POSTPONE 1+ \ Compile code to get child's PFA
 ; IMMEDIATE
 
-
 : CONSTANT ( x "<spaces>name" -- ) ( -- x      ) : POSTPONE LITERAL POSTPONE ; ;
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
 : BUFFER:  ( u "<spaces>name" -- ) ( -- a-addr ) CREATE ALLOT ;
@@ -512,26 +533,16 @@
 
 : RECURSE ( -- ) LATEST @ >code COMPILE, ; IMMEDIATE
 
+
 \ FIXME State does matter but the rationale isn't well explained
 \ https://forth-standard.org/standard/double/TwoVALUE
 \ : VALUE ( x "<spaces>name" -- ) CREATE , DOES> ( -- x ) @ ;
 \ : TO    ( x "<spaces>name" -- ) ' >BODY ! ;
 
-
-: EXECUTE ( i*x xt -- j*x ) [
-    4C C, 89 C, C0 C,       \ mov   %r8, %rax
-    4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
-    sp+
-    FF C, D0 C,             \ call  *%rax
-] ;
-
-: EXIT ( -- ) [ 48 C, 83 C, C4 C, 08 C, ] ; \ add $8, %rsp
-
 : DEFER  (    "<spaces>name" --     ) CREATE 0 , DOES> @ EXECUTE ;
 : DEFER@ (            xt1    -- xt2 ) >BODY @ ;
 : DEFER! (        xt2 xt1    --     ) >BODY ! ;
 
-\ TODO : read why state matters
 : IS
     STATE @ IF
         POSTPONE ['] POSTPONE DEFER!
@@ -589,9 +600,9 @@
 
 \ Strings ======================================================================
 
-20 CONSTANT BL
 : SPACE  (   -- ) BL EMIT ;
 : SPACES ( u -- ) 0 DO SPACE LOOP ;
+: CR     (   -- ) 0D EMIT 0A EMIT ;
 
 : COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
@@ -599,14 +610,12 @@
 
 : counted ( c-addr1 u -- c-addr2 ) \ String to counted-string (transient region)
     FF MIN \ Limit size to 255
-    DUP HERE     ( c-addr1 u u here  ) C!   \ len
-    counted-buf 1+ SWAP ( c-addr1 c-addr2 u ) MOVE \ chars
-    HERE
+    DUP counted-buf ( c-addr1 u u buf ) C! \ len
+    counted-buf 1+ SWAP ( c-addr1 buf+1 u ) CMOVE \ chars
+    counted-buf
 ;
 
-\ TODO skip leading chars
-\ : WORD ( char "<chars>ccc<char>" -- c-addr ) PARSE-NAME counted ;
-
+: WORD ( char "<chars>ccc<char>" -- c-addr ) DUP scan-while PARSE counted ;
 
 : CHAR   ( "<spaces>name" -- char )           PARSE-NAME DROP C@ ;
 : [CHAR] ( C: "<spaces>name" -- ) ( -- char ) CHAR POSTPONE LITERAL ; IMMEDIATE
@@ -635,16 +644,6 @@
     POSTPONE THEN
     R@ POSTPONE LITERAL     \ Push c-addr2
     R> CHAR+ R> ( c-addr1 c-addr3 u ) MOVE \ Copy string data
-; IMMEDIATE
-
-
-: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
-    POSTPONE IF
-    POSTPONE ."
-    POSTPONE TYPE
-    POSTPONE CR
-    POSTPONE ABORT
-    POSTPONE THEN
 ; IMMEDIATE
 
 
@@ -698,6 +697,7 @@ VARIABLE #idx
 : .R   ( n w -- ) >R DUP ABS S>D (  d ) <# #S ROT SIGN R> #pad #> TYPE ;
 : .X   (   u -- ) BASE @ SWAP HEX 0 <# 10 0 DO # LOOP #> TYPE SPACE BASE ! ;
 
+
 \ Tools ========================================================================
 
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8/ ;
@@ -733,7 +733,7 @@ VARIABLE #idx
         DUP 8 U< IF DROP 0 ELSE 8 - THEN \ dec u
         SWAP 8 + SWAP \ inc addr
     REPEAT
-    CR R> BASE !
+    DROP R> BASE ! CR
 ;
 
 : WORDS ( -- )
@@ -761,6 +761,17 @@ VARIABLE #idx
 0 INVERT CONSTANT TRUE
 0 CONSTANT FALSE
 
+: ABORT ( i*x -- ) S0 [ 4C C, 89 C, C5 C, ] QUIT ; \ mov %r8, %rbp
+
+: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
+    POSTPONE IF
+    POSTPONE ."
+    POSTPONE CR
+    POSTPONE ABORT
+    POSTPONE THEN
+; IMMEDIATE
+
+
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
     DUP COUNT find ( c-addr xt flags 0|nt )
     0= IF 2DROP 0 ( c-addr 0 ) EXIT THEN
@@ -768,10 +779,16 @@ VARIABLE #idx
     FLAG-IMM AND IF 1 ELSE -ONE THEN ;
 ;
 
-: greet ." Welcome to Scouarn Forth" CR
-        UNUSED . ." bytes free" CR CR
+: greet ." Welcome to Scouarn Forth"
+    CR ." used: "
+    HERE CP0 - . ." total, "
+    CP1  CP0 - . ." kernel, "
+    HERE CP1 - . ." user "
+    UNUSED CR ." free: " .
+    CR CR
 ;
 
 \ Start ========================================================================
+
 greet
 echo ON

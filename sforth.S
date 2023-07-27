@@ -25,28 +25,20 @@
 .equ FALSE_VAL, 0
 
 
-## Syscall constants
-
 #include <asm/unistd.h>
-
-.equ SYS_READ,  __NR_read
-.equ SYS_WRITE, __NR_write
-.equ SYS_EXIT,  __NR_exit
-
-.equ STDIN,  0
-.equ STDOUT, 1
-
-.equ EXIT_SUCCESS, 0
+#define STDIN  0
+#define STDOUT 1
 
 
-## Data stack
+## Stacks
 
 # %rbp: data stack pointer
 # %r8:  top of the stack
 
         .bss
+rstack_init:  .quad 0 # Return stack initial value
 dstack_end:
-        .skip   DSTACK_SZ
+        .skip DSTACK_SZ
 dstack_start:
 
 .macro DPUSH src
@@ -58,11 +50,6 @@ dstack_start:
         movq    (%rbp), \dst
         leaq    8(%rbp), %rbp
 .endm
-
-
-## Return stack
-        .bss
-rstack_init:    .quad 0
 
 
 ## Entrypoint
@@ -81,43 +68,33 @@ _start:
 
 .equ _LAST_DEF, 0
 .macro DEFINE_WORD label, name, flags=0
-word_\label:
+1:
         .quad   _LAST_DEF
         .byte   \flags
-        .byte   (2f - 1f)
-1:
-        .ascii  "\name"
+        .byte   (3f - 2f)
 2:
+        .ascii  "\name"
+3:
 xt_\label:
-.equ _LAST_DEF, word_\label
+.equ _LAST_DEF, 1b
 .endm
 
 
 .macro DEFINE_CONST label, name, value, flags=0
 DEFINE_WORD \label, \name, \flags
-        DPUSH   $\value
+        DPUSH   %r8
+        mov     $\value, %r8
         ret
 .endm
-
-
-.macro DEFINE_VAR label, name, value, flags=0
-DEFINE_WORD \label, \name, \flags
-        DPUSH   $3f
-        ret
-3:      .quad   \value
-.endm
-
 
 
         .section .dictionary, "awx", @progbits
+dict_start:
+
 
 ## Stack manipulation
 
-DEFINE_WORD SZero, "S0"         # ( -- addr )
-        DPUSH   %r8
-        movq    $dstack_start, %r8
-        ret
-
+DEFINE_CONST SZero, "S0", dstack_start
 
 DEFINE_WORD SPAt, "SP@"         # ( -- addr )
         movq    %r8, %rax
@@ -133,7 +110,7 @@ DEFINE_WORD EMIT, "EMIT"        # ( char -- )
         DPOP    %r8
 _EMIT:  # %al:char
         movb    %al, .Lemit_buf
-        movq    $SYS_WRITE,  %rax
+        movq    $__NR_write, %rax
         movq    $STDOUT,     %rdi
         movq    $.Lemit_buf, %rsi
         movq    $1,          %rdx
@@ -142,21 +119,13 @@ _EMIT:  # %al:char
 .Lemit_buf: .byte 0
 
 
-DEFINE_WORD CR, "CR"            # ( -- )
-        movb    $'\r', %al
-        call    _EMIT
-        movb    $'\n', %al
-        call    _EMIT
-        ret
-
-
 DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
         movq    %r8, %rdx
         movq    0(%rbp), %rsi
         movq    8(%rbp), %r8
         addq    $16, %rbp
 _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
-        movq    $SYS_WRITE, %rax
+        movq    $__NR_write, %rax
         movq    $STDOUT, %rdi
         syscall
         ret
@@ -165,7 +134,7 @@ _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
 DEFINE_WORD KEY, "KEY"          # ( -- char )
         DPUSH   %r8
         DPUSH   $0,             # Alloc
-        movq    $SYS_READ,  %rax
+        movq    $__NR_read, %rax
         movq    $STDIN,     %rdi
         movq    %rbp,       %rsi
         movq    $1,         %rdx
@@ -203,38 +172,16 @@ DEFINE_WORD DotX, "." # ( u -- ) (debug) Print hex unsigned with leading 0s
 
 # Compilation
 
-DEFINE_WORD CP, "CP"            # ( -- addr )
-        DPUSH   %r8
-        movq    $curr_def, %r8
-        ret
-curr_def: .quad user_dict
+DEFINE_CONST STATE,  "STATE",  state
+DEFINE_CONST LATEST, "LATEST", last_def
+DEFINE_CONST CP,     "CP",     curr_def
+DEFINE_CONST CPZero, "CP0",    dict_start
+DEFINE_CONST CPOne,  "CP1",    user_dict_start
+DEFINE_CONST brk,    "brk",    dict_end
 
-
-DEFINE_WORD CPZero, "CP0"       # ( -- addr )
-        DPUSH   %r8
-        mov     $user_dict, %r8
-        ret
-
-
-DEFINE_WORD brk, "brk"          # ( -- addr ) End of dict
-                                # Can be accessed for mmap
-        DPUSH   %r8
-        movq    $dict_end, %r8
-        ret
-dict_end: .quad (user_dict+DICT_SZ)
-
-
-DEFINE_WORD LATEST, "LATEST"    # ( -- addr )
-        DPUSH   %r8
-        movq    $last_def, %r8
-        ret
-
-
-DEFINE_WORD STATE, "STATE"
-        DPUSH   %r8
-        movq    $state, %r8
-        ret
-state: .quad 0
+dict_end: .quad (user_dict_start+DICT_SZ)
+curr_def: .quad user_dict_start
+state:    .quad 0
 
 
 DEFINE_WORD Lsq, "[", FLAG_IMM
@@ -315,7 +262,9 @@ DEFINE_WORD Colon, ":"          # ( "<spaces>ccc<space>" -- )
         stosb                   # Put hidden flag
 
         push    %rdi
-        call    _PARSE_NAME     # FIXME: Ignore empty word ? Allows for :NONAME
+        movb    $' ', %bl
+        call    _SKIP
+        call    _PARSE          # FIXME: Allow empty word ?
         movq    %rdi, %rsi      # c-addr
         mov     %rcx, %rax      # u
         pop     %rdi
@@ -348,17 +297,9 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 
 ## Parsing
 
-DEFINE_WORD echo, "echo"
-        DPUSH   %r8
-        movq    $do_echo, %r8
-        ret
-do_echo: .quad 0
-
-
-DEFINE_WORD SupIN, ">IN"
-        DPUSH   %r8
-        movq    $source_idx, %r8
-        ret
+DEFINE_CONST echo, "echo", do_echo
+DEFINE_CONST SupIN, ">IN", source_idx
+do_echo:    .quad 0
 source_idx: .quad 0
 
 
@@ -458,7 +399,10 @@ DEFINE_WORD REFILL, "REFILL"
         ret
 
 
-_PARSE:  # ( bl:char "ccc<char>" -- rdi:c-addr rcx:u )
+DEFINE_WORD SCAN_UNTIL, "scan-until"    # ( char "ccc<char>" -- )
+        mov     %r8, %rbx
+        DPOP    %r8
+_PARSE:  # bl:char -- rdi:c-addr rcx:u
         movq    source_idx, %rsi
         movq    source_cnt, %rdx
         leaq    source_buf(%rsi), %rdi  # c-addr
@@ -481,39 +425,29 @@ _PARSE:  # ( bl:char "ccc<char>" -- rdi:c-addr rcx:u )
 
 
 DEFINE_WORD PARSE "PARSE"       # ( char "ccc<char>" -- c-addr u )
-        movq    %r8, %rbx
-        call    _PARSE
-        movq    %rcx, %r8       # u
-        DPUSH   %rdi            # c-addr
-        ret
-
-
-_PARSE_NAME: # ( "<spaces>ccc<space>" -- rdi:c-addr rcx:u )
-        movq    source_idx, %rsi
-        movq    source_cnt, %rdx
-
-.Lparse_name_skip: # Skip leading spaces
-        cmpq    %rdx, %rsi
-        jge     .Lparse_name_end
-        cmpb    $' ', source_buf(%rsi)
-        jne     .Lparse_name_end
-        incq    %rsi
-        jmp     .Lparse_name_skip
-
-.Lparse_name_end:
-        movq    %rsi, source_idx
-        movb    $' ', %bl
-        call    _PARSE
-        ret
-
-
-DEFINE_WORD PARSEMinusNAME "PARSE-NAME" # ( "<spaces>ccc<space>" -- c-addr u )
-        call    _PARSE_NAME
+        call    xt_SCAN_UNTIL
         DPUSH   %r8
         DPUSH   %rdi            # c-addr
         movq    %rcx, %r8       # u
         ret
 
+
+DEFINE_WORD SCAN_WHILE, "scan-while"    # ( char "<chars>ccc" -- "ccc" )
+        mov     %r8, %rbx
+        DPOP    %r8
+_SKIP:  # bl:char
+        movq    source_idx, %rsi
+        movq    source_cnt, %rdx
+.Lskip_loop:
+        cmpq    %rdx, %rsi
+        jge     .Lskip_end
+        cmpb    $' ', source_buf(%rsi)
+        jne     .Lskip_end
+        incq    %rsi
+        jmp     .Lskip_loop
+.Lskip_end:
+        movq    %rsi, source_idx
+        ret
 
 
 _NUMBER: # ( rdi:c-addr rdx:u -- rax:u rbx:flag ) Parse hex number
@@ -549,9 +483,8 @@ _NUMBER: # ( rdi:c-addr rdx:u -- rax:u rbx:flag ) Parse hex number
 ## Interpreter
 
 DEFINE_WORD BYE, "BYE"
-        call    xt_CR
-        movq    $SYS_EXIT, %rax
-        movq    $EXIT_SUCCESS, %rdi
+        movq    $__NR_exit, %rax
+        movq    $0, %rdi
         syscall
 
 
@@ -588,12 +521,6 @@ DEFINE_WORD QUIT, "QUIT"
 .Lquit_msg2:
         .ascii  "ok (compiling)\r\n"
         .equ QUIT_MSG2_SZ, (.-.Lquit_msg2)
-
-
-DEFINE_WORD ABORT, "ABORT"
-        movq    $dstack_start, %rbp     # Empty data stack
-        xor     %r8, %r8
-        jmp     xt_QUIT                 # No return
 
 
 _FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )
@@ -639,7 +566,9 @@ DEFINE_WORD find, "find"   # ( c-addr u -- xt flags 0|nt )
 
 DEFINE_WORD INTERPRET, "INTERPRET"
 .Linterpret_loop:
-        call    _PARSE_NAME
+        movb    $' ', %bl
+        call    _SKIP
+        call    _PARSE
         test    %rcx, %rcx
         jnz     .Linterpret_try_find
         ret
@@ -699,14 +628,18 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         pop     %rdx            # u
         pop     %rsi            # c-addr
         call    _TYPE           # Print word
-        call    xt_CR
-        call    xt_ABORT        # No return
-        ret
+        movq    $.Lcrlf, %rsi
+        movq    $2, %rdx
+        call    _TYPE           # Print newline
+        jmp     xt_BYE          # No return
 
 .Linterpret_msg:
-        .ascii  "**NOT FOUND** "
+        .ascii  "**NOT FOUND ** "
         .equ .Linterpret_msg_sz, (.-.Linterpret_msg)
+.Lcrlf:
+        .ascii  "\r\n"
 
 
-last_def:  .quad _LAST_DEF
-user_dict: .skip DICT_SZ
+last_def: .quad _LAST_DEF
+user_dict_start:
+        .skip DICT_SZ
