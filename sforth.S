@@ -92,15 +92,27 @@ DEFINE_WORD \label, \name, \flags
 dict_start:
 
 
-## Stack manipulation
+## Consts and variables
 
-DEFINE_CONST SZero, "S0", dstack_start
+DEFINE_CONST    SZero,          "S0",           dstack_start
+DEFINE_CONST    STATE,          "STATE",        state
+DEFINE_CONST    LATEST,         "LATEST",       last_def
+DEFINE_CONST    CP,             "CP",           curr_def
+DEFINE_CONST    CPZero,         "CP0",          dict_start
+DEFINE_CONST    CPOne,          "CP1",          user_dict_start
+DEFINE_CONST    brk,            "brk",          dict_end
+DEFINE_CONST    echo,           "echo",         do_echo
+DEFINE_CONST    SupIN,          ">IN",          source_idx
+DEFINE_CONST    TIB,            "TIB",          source_buf
+DEFINE_CONST    HashTIB,        "\#TIB",        source_cnt
 
-DEFINE_WORD SPAt, "SP@"         # ( -- addr )
-        movq    %r8, %rax
-        movq    %rbp, %r8
-        DPUSH   %rax
-        ret
+dict_end:       .quad (user_dict_start+DICT_SZ)
+curr_def:       .quad user_dict_start
+state:          .quad 0
+source_cnt:     .quad 0 # Size of the current line
+do_echo:        .quad 0
+source_idx:     .quad 0
+source_buf:     .skip (SOURCE_SZ+1)
 
 
 ## IO
@@ -171,18 +183,6 @@ DEFINE_WORD DotX, "." # ( u -- ) (debug) Print hex unsigned with leading 0s
 
 
 # Compilation
-
-DEFINE_CONST STATE,  "STATE",  state
-DEFINE_CONST LATEST, "LATEST", last_def
-DEFINE_CONST CP,     "CP",     curr_def
-DEFINE_CONST CPZero, "CP0",    dict_start
-DEFINE_CONST CPOne,  "CP1",    user_dict_start
-DEFINE_CONST brk,    "brk",    dict_end
-
-dict_end: .quad (user_dict_start+DICT_SZ)
-curr_def: .quad user_dict_start
-state:    .quad 0
-
 
 DEFINE_WORD Lsq, "[", FLAG_IMM
         movq    $0, state
@@ -297,22 +297,12 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 
 ## Parsing
 
-DEFINE_CONST echo, "echo", do_echo
-DEFINE_CONST SupIN, ">IN", source_idx
-do_echo:    .quad 0
-source_idx: .quad 0
-
-
 DEFINE_WORD SOURCE, "SOURCE" # ( -- c-addr u )
         DPUSH   %r8
         movq    $source_buf, %r8
         DPUSH   %r8
         movq    source_cnt, %r8
         ret
-source_cnt: .quad 0 # Size of the current line
-source_buf:
-        .skip SOURCE_SZ
-        .byte 0
 
 
 _ECHO: # Emit if do_echo is true

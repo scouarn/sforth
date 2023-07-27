@@ -69,6 +69,11 @@
 
 : rdrop ( -- ) ( R: x -- ) 48 C, 83 C, C4 C, 08 C, ; IMMEDIATE \ add $8, %rsp
 
+: SP@   ( -- addr ) [
+    sp-  4C C, 89 C, 45 C, 00 C, \ mov  %r8, (%rbp)
+         4C C, 8D C, 45 C, 08 C, \ lea  8(%rbp), %r8
+] ;
+
 : >R ( -- x ) ( R: x -- )
     41 C, 50 C,             \ push   %r8
     4C C, 8B C, 45 C, 00 C, \ mov   (%rbp), %r8
@@ -353,6 +358,7 @@
 : PAD    (   -- addr ) HERE 100 + ;
 : UNUSED (   -- u    ) brk @ HERE - ;
 
+
 : FLAG-IMM 01 ;
 : FLAG-HIDDEN 02 ;
 
@@ -597,6 +603,13 @@
 \ Something like (~7) AND FILL-CELLS (with rep movsq)
 \ followed by 7 AND FILL
 
+: ROLL ( xu xu-1 xu-2 ... x0 u -- xu-1 xu-2 ... x0 x1 ) [
+    4C C, 89 C, C1 C,             \ mov  %r8, %rcx            u
+    48 C, 8D C, 7C C, CD C, 00 C, \ lea  (%rbp,%rcx,8), %rdi  addr of xu
+    48 C, 8D C, 77 C, F8 C,       \ lea  -8(%rdi), %rsi       addr of xu-1
+    4C C, 8B C, 07 C, sp+         \ mov  (%rdi), %r8          pick u
+    FD C, F3 C, 48 C, A5 C, FC C, \ std; rep movsq; cld       offset stack
+] ;
 
 \ Strings ======================================================================
 
@@ -770,6 +783,15 @@ VARIABLE #idx
     POSTPONE ABORT
     POSTPONE THEN
 ; IMMEDIATE
+
+VARIABLE source-id
+: SOURCE-ID ( -- 0|-1 ) source-id @ ;
+
+\ TODO Depends on the value of SOURCE-ID -> case of
+: SOURCE ( -- c-addr u )
+    SOURCE-ID 0= IF ( ... ) THEN
+    TIB #TIB @
+;
 
 
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
