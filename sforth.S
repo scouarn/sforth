@@ -99,24 +99,10 @@ DEFINE_CONST    TIB,            "TIB",          tib
 source:         .quad tib
 source_idx:     .quad 0
 source_cnt:     .quad 0
-tib:            .skip (TIB_SZ+1)
+tib:            .skip TIB_SZ
 
 
 ## IO
-
-DEFINE_WORD EMIT, "EMIT"        # ( char -- )
-        movq    %r8, %rax
-        DPOP    %r8
-_EMIT:  # %al:char
-        movb    %al, .Lemit_buf
-        movq    $__NR_write, %rax
-        movq    $STDOUT,     %rdi
-        movq    $.Lemit_buf, %rsi
-        movq    $1,          %rdx
-        syscall
-        ret
-.Lemit_buf: .byte 0
-
 
 DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
         movq    %r8, %rdx
@@ -127,45 +113,6 @@ _TYPE: # ( -- ) %rsi : c-addr, %rdx : u
         movq    $__NR_write, %rax
         movq    $STDOUT, %rdi
         syscall
-        ret
-
-
-DEFINE_WORD KEY, "KEY"          # ( -- char )
-        DPUSH   %r8
-        DPUSH   $0,             # Alloc
-        movq    $__NR_read, %rax
-        movq    $STDIN,     %rdi
-        movq    %rbp,       %rsi
-        movq    $1,         %rdx
-        syscall
-        DPOP    %r8
-        ret
-
-
-DEFINE_WORD DotX, "." # ( u -- ) (debug) Print hex unsigned with leading 0s
-        movq    $16, %rcx
-        movq    %r8, %rax
-        DPOP    %r8
-.Ldot_loop:
-        rolq    $4, %rax
-        movq    %rax, %rbx
-        andq    $0x0f, %rbx
-        addb    $'0', %bl
-        cmpb    $'9', %bl
-        jbe     .Ldot_emit
-        addb    $('A'-'0'-10), %bl
-.Ldot_emit:
-        push    %rax
-        push    %rcx
-        movb    %bl, %al
-        call    _EMIT
-        pop     %rcx
-        pop     %rax
-        dec     %rcx
-        jnz     .Ldot_loop
-.Ldot_end:
-        movb    $' ', %al
-        call    _EMIT
         ret
 
 
@@ -285,65 +232,40 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 ## Parsing
 
 _REFILL: # ( -- ) Read line in source buff, update source_idx and source_cnt
-        # %rbx := Number of non special chars read (one newline -> 1)
-
-        xorq    %rbx, %rbx      # Total number of chars read
-        movq    $tib, %rdi
-
+        movq    $0, source_idx
+        mov     $tib, %rdi
 .Lrefill_loop:
-        push    %rdi            # Read one char
-        call    xt_KEY
+        push    %rdi
+
+        pushw   $0              # Input one char
+        movq    $__NR_read, %rax
+        movq    $STDIN,     %rdi
+        movq    %rsp,       %rsi
+        movq    $1,         %rdx
+        syscall
+
+        test    %rax, %rax
+        popw    %ax
         pop     %rdi
-        movq    %r8, %rax
-        DPOP    %r8
+        jl      .Lrefill_err    # Error
+        je      .Lrefill_loop   # Nothing read
 
-        test    %al, %al        # Stop on zero (nothing read)
-        jz      .Lrefill_end
-
-        cmpb    $0x04, %al      # ^D: Restart
-        jz      .Lrefill_end
-
-        cmpb    $0x03, %al      # ^C: Restart
-        je      _REFILL
-
-        cmpb    $0x7f, %al      # DEL
-        jne     .Lrefill_not_del
-        cmpq    $tib, %rdi # Ignore DEL on first col
-        je      .Lrefill_loop
-        dec     %rdi
-        jmp     .Lrefill_loop
-.Lrefill_not_del:
-
-        cmpb    $0x1b, %al      # Ignore escape
-        je      .Lrefill_loop
-
-        incq    %rbx
-
-        cmpb    $'\r', %al      # Stop on newline
+        cmpb    $'\r', %al      # Line terminator
         je      .Lrefill_end
         cmpb    $'\n', %al
         je      .Lrefill_end
 
-        stosb                   # Add to buffer
-
-        cmpq    $(tib+TIB_SZ), %rdi
-        jl      .Lrefill_loop   # Stop on end of buffer
+        stosb
+        cmp     $(tib+TIB_SZ), %rdi
+        jb      .Lrefill_loop
 
 .Lrefill_end:
-        movq    $0, source_idx
-        subq    $tib, %rdi
+        sub     $tib, %rdi
         movq    %rdi, source_cnt
         ret
 
-
-DEFINE_WORD REFILL, "REFILL"
-        call    _REFILL
-        test    %rbx, %rbx
-        setz    %al             # 0 if rbx <> 0
-        movzxb  %al, %rax
-        decq    %rax            # -1 (TRUE) if rbx <> 0
-        DPUSH   %r8
-        mov     %rax, %r8
+.Lrefill_err:
+        movq    $-1, source_cnt
         ret
 
 
@@ -442,8 +364,8 @@ DEFINE_WORD QUIT, "(quit)"
         movq    $0, state               # Interpreter mode
 .Lquit_loop:
         call    _REFILL
-        test    %rbx, %rbx
-        jz      xt_BYE
+        cmpq    $0, source_cnt
+        jl      xt_BYE
         call    _INTERPRET
         jmp     .Lquit_loop
 
@@ -553,16 +475,11 @@ _INTERPRET:
         pop     %rdx            # u
         pop     %rsi            # c-addr
         call    _TYPE           # Print word
-        movq    $.Lcrlf, %rsi
-        movq    $2, %rdx
-        call    _TYPE           # Print newline
         jmp     xt_BYE          # No return
 
 .Linterpret_msg:
         .ascii  "**NOT FOUND** "
         .equ .Linterpret_msg_sz, (.-.Linterpret_msg)
-.Lcrlf:
-        .ascii  "\r\n"
 
 
 last_def: .quad _LAST_DEF

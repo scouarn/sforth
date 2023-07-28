@@ -653,6 +653,35 @@
     FD C, F3 C, 48 C, A5 C, FC C, \ std; rep movsq; cld       offset stack
 ] ;
 
+
+\ OS ===========================================================================
+
+0 CONSTANT sys-read
+1 CONSTANT sys-write
+0 CONSTANT stdin
+1 CONSTANT stdout
+2 CONSTANT stderr
+
+: syscall3 ( num arg1 arg2 arg3 -- n ) [
+    48 C, 8B C, 45 C, 10 C, \ movq    16(%rbp), %rax
+    48 C, 8B C, 7D C, 08 C, \ movq    8(%rbp),  %rdi
+    48 C, 8B C, 75 C, 00 C, \ movq    0(%rbp),  %rsi
+    4C C, 89 C, C2 C,       \ movq    %r8,      %rdx
+    0F C, 05 C,             \ syscall
+    49 C, 89 C, C0 C,       \ movq    %rax, %r8
+    48 C, 8D C, 6D C, 18 C, \ lea     24(%rbp), %rbp
+] ;
+
+
+VARIABLE key-buf
+: KEY ( -- -1|char ) \ -1 on failure
+    sys-read stdin key-buf 1 syscall3
+    0< IF -ONE ELSE key-buf @ THEN
+;
+
+VARIABLE emit-buf
+: EMIT ( char -- ) emit-buf ! sys-write stdout emit-buf 1 syscall3 DROP ;
+
 \ Strings ======================================================================
 
 0D CONSTANT #cr
@@ -891,33 +920,9 @@ VARIABLE #idx
 
 \ Text IO ======================================================================
 
+VARIABLE ECHO
 0 VALUE SOURCE-ID
 : SOURCE ( -- c-addr u ) IN @ #IN @ ;
-
-0 CONSTANT sys-read
-1 CONSTANT sys-write
-0 CONSTANT stdin
-1 CONSTANT stdout
-2 CONSTANT stderr
-
-: syscall3 ( num arg1 arg2 arg3 -- n ) [
-    48 C, 8B C, 45 C, 10 C, \ movq    16(%rbp), %rax
-    48 C, 8B C, 7D C, 08 C, \ movq    8(%rbp),  %rdi
-    48 C, 8B C, 75 C, 00 C, \ movq    0(%rbp),  %rsi
-    4C C, 89 C, C2 C,       \ movq    %r8,      %rdx
-    0F C, 05 C,             \ syscall
-    49 C, 89 C, C0 C,       \ movq    %rax, %r8
-    48 C, 8D C, 6D C, 18 C, \ lea     24(%rbp), %rbp
-] ;
-
-
-VARIABLE key-buf
-: KEY ( -- -1|char ) \ -1 on failure
-    sys-read stdin key-buf 1 syscall3
-    0< IF -ONE ELSE key-buf @ THEN
-;
-
-VARIABLE ECHO
 
 : ACCEPT ( c-addr +n1 -- +n2 ) \ -1 On failure
     2>R 0 ( n2 )
