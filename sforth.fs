@@ -398,7 +398,6 @@
 : POSTPONE ( "<spaces>name" -- )
     PARSE-NAME find ( xt flags nt )
     0= IF BYE THEN \ TODO handle error
-
     ( flags ) FLAG-IMM AND IF \ Compile code that executes xt
         COMPILE,
     ELSE \ Compile code that compiles xt (default compilation behaviour)
@@ -544,6 +543,7 @@
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
 : BUFFER:  ( u "<spaces>name" -- ) ( -- a-addr ) CREATE ALLOT ;
 
+
 : :NONAME ( -- xt ) ( -- xt )
     HERE LATEST DUP @ ( here latest prev-addr ) , \ Set previous field
     ( here latest ) ! \ Update latest
@@ -555,29 +555,24 @@
 : RECURSE ( -- ) LATEST @ >code COMPILE, ; IMMEDIATE
 
 
-\ FIXME State does matter but the rationale isn't well explained
+\ NOTE: For the double ext set, TO has to work with 2VALUE aswell
 \ https://forth-standard.org/standard/double/TwoVALUE
-\ : VALUE ( x "<spaces>name" -- ) CREATE , DOES> ( -- x ) @ ;
-\ : TO    ( x "<spaces>name" -- ) ' >BODY ! ;
+: VALUE ( x "<spaces>name" -- ) CREATE , DOES> ( -- x ) @ ; IMMEDIATE
+: TO    ( x "<spaces>name" -- )
+    STATE @ IF POSTPONE ['] POSTPONE >BODY POSTPONE ! ELSE ' >BODY ! THEN
+; IMMEDIATE
 
-: DEFER  (    "<spaces>name" --     ) CREATE 0 , DOES> @ EXECUTE ;
-: DEFER@ (            xt1    -- xt2 ) >BODY @ ;
-: DEFER! (        xt2 xt1    --     ) >BODY ! ;
+
+: DEFER  ( "<spaces>name" --     ) CREATE 0 , DOES> @ EXECUTE ;
+: DEFER@ (         xt1    -- xt2 ) >BODY @ ;
+: DEFER! (     xt2 xt1    --     ) >BODY ! ;
 
 : IS
-    STATE @ IF
-        POSTPONE ['] POSTPONE DEFER!
-    ELSE
-        ' DEFER!
-    THEN
+    STATE @ IF POSTPONE ['] POSTPONE DEFER!  ELSE ' DEFER!  THEN
 ; IMMEDIATE
 
 : ACTION-OF
-    STATE @ IF
-        POSTPONE ['] POSTPONE DEFER@
-    ELSE
-        ' DEFER@
-    THEN
+    STATE @ IF POSTPONE ['] POSTPONE DEFER@ ELSE ' DEFER@ THEN
 ; IMMEDIATE
 
 
@@ -808,8 +803,7 @@ VARIABLE #idx
     POSTPONE THEN
 ; IMMEDIATE
 
-VARIABLE (source-id)
-: SOURCE-ID ( -- 0|-1     ) (source-id) @ ;
+0 VALUE SOURCE-ID
 : SOURCE    ( -- c-addr u ) IN @ #IN @ ;
 
 : REFILL ( -- flag     )
@@ -822,9 +816,9 @@ VARIABLE (source-id)
 
 : EVALUATE ( i*x c-addr u -- j*x )
     SOURCE 2>R >IN @ SOURCE-ID 2>R \ Save input
-    -ONE (source-id) ! 0 >IN ! #IN ! IN !  \ Set source to the string
+    -ONE TO SOURCE-ID 0 >IN ! #IN ! IN !  \ Set source to the string
     INTERPRET
-    2R> >IN ! (source-id) ! 2R> IN ! #IN ! \ Restore input
+    2R> >IN ! TO SOURCE-ID 2R> IN ! #IN ! \ Restore input
 ;
 
 \ : SAVE-INPUT ( -- xn ... x1 n ) ;
