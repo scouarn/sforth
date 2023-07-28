@@ -676,7 +676,7 @@
 VARIABLE key-buf
 : KEY ( -- -1|char ) \ -1 on failure
     sys-read stdin key-buf 1 syscall3
-    0< IF -ONE ELSE key-buf @ THEN
+    0<= IF -ONE ELSE key-buf @ THEN
 ;
 
 VARIABLE emit-buf
@@ -741,6 +741,18 @@ VARIABLE emit-buf
 ; IMMEDIATE
 
 : /STRING ( c-addr1 u1 n -- c-addr2 u2 ) TUCK - >R CHARS + R> ;
+
+: s= ( c-addr1 u1 c-addr2 u2 -- flag ) \ String equality
+    2 PICK <> IF DROP 2DROP FALSE EXIT THEN \ <>len -> false
+    ( c-addr1 u c-addr2 )
+    2 PICK OVER = IF DROP 2DROP TRUE EXIT THEN \ =addr and =len -> true
+    SWAP ( c-addr1 c-addr2 u ) 0 ?DO \ Compare chars
+        2DUP C@ SWAP C@ <> IF 2DROP FALSE UNLOOP EXIT THEN
+        CHAR+ SWAP CHAR+ \ Don't care if addr1 and addr2 are swapped
+    LOOP
+    2DROP
+    TRUE
+;
 
 
 \ Pictured numeric output ======================================================
@@ -918,7 +930,27 @@ VARIABLE #idx
     DUP IF FORGET-NAME THEN 2DROP
 ;
 
+
 : MARKER HERE CREATE , DOES> @ FORGET-NAME ;
+
+-ONE 1 RSHIFT CONSTANT MAX-N
+
+: ENVIRONMENT? ( c-addr u -- false | i*x true )
+    2>R
+    2R@ S" /COUNTED-STRING"     s= IF 2rdrop FF          TRUE  EXIT THEN
+    2R@ S" /HOLD"               s= IF 2rdrop 100         TRUE  EXIT THEN
+    2R@ S" /PAD"                s= IF 2rdrop             FALSE EXIT THEN \ TODO About one page using dyn-alloc ?
+    2R@ S" ADDRESS-UNIT-BITS"   s= IF 2rdrop 8           TRUE  EXIT THEN
+    2R@ S" FLOORED"             s= IF 2rdrop FALSE       TRUE  EXIT THEN
+    2R@ S" MAX-CHAR"            s= IF 2rdrop FF          TRUE  EXIT THEN
+    2R@ S" MAX-D"               s= IF 2rdrop -ONE  MAX-N TRUE  EXIT THEN
+    2R@ S" MAX-N"               s= IF 2rdrop MAX-N       TRUE  EXIT THEN
+    2R@ S" MAX-U"               s= IF 2rdrop -ONE        TRUE  EXIT THEN
+    2R@ S" MAX-UD"              s= IF 2rdrop -ONE  -ONE  TRUE  EXIT THEN
+    2R@ S" RETURN-STACK-CELLS"  s= IF 2rdrop             FALSE EXIT THEN \ TODO sys_getrlim
+    2R@ S" STACK-CELLS"         s= IF 2rdrop 4000        TRUE  EXIT THEN
+    2rdrop FALSE
+;
 
 
 \ Text IO ======================================================================
