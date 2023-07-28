@@ -2,7 +2,6 @@
 : ( 29 scan-until ; IMMEDIATE
 
 \ TODO:
-\ CASE ENDCASE OF ENDOF (see https://forth-standard.org/standard/rationale)
 \ >NUMBER and standard number parser
 \ ENVIRONMENT?
 \ TO and VALUE
@@ -132,7 +131,7 @@
     48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
 ] ;
 
-: H! ( x addr -- ) [ \ Store Half cell (4bytes)
+: L! ( x addr -- ) [ \ Store long word (32bits)
     48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax    # x
     41 C, 89 C, 00 C,       \ movq    %rax, (%r8)
     4C C, 8B C, 45 C, 08 C, \ mov     8(%rbp), %r8
@@ -374,8 +373,8 @@
 
 \ Control flow =================================================================
 
-: <resolve ( C: ori      --     ) (   -- ) >R HERE 4 - R@ - R> H! ;
-: resolve> ( C: dest ori --     ) (   -- ) >R HERE - R> H! ;
+: <resolve ( C: ori      --     ) (   -- ) >R HERE 4 - R@ - R> L! ;
+: resolve> ( C: dest ori --     ) (   -- ) >R HERE - R> L! ;
 : branch   ( C:          -- ori ) (   -- ) E9 C, HERE 99 C, 99 C, 99 C, 99 C, ;
 : branch0  ( C:          -- ori ) ( x -- )
     4D C, 85 C, C0 C,       \ test %r8, %r8
@@ -490,6 +489,28 @@
     sp-   4C C, 89 C, 45 C, 00 C, \ mov    r8, (%rbp)
     4C C, 8B C, 44 C, 24 C, 18 C, \ mov    24(%rsp), %r8
 ; IMMEDIATE
+
+
+\ CASE =========================================================================
+
+: CASE ( C: -- num ) ( -- ) 0 ; IMMEDIATE \ Initial number of cases
+
+: ENDCASE ( C: ori1 ori2 ... oriu u -- ) ( x -- )
+    POSTPONE DROP
+    0 ?DO POSTPONE THEN LOOP
+; IMMEDIATE
+
+\ I was about to call it "OF-COND" like "cond" in Lisp but "?of" is in Gforth
+: ?OF ( C: u1 -- ori u2 ) ( flag -- ) POSTPONE IF SWAP 1+ ; IMMEDIATE
+
+: OF ( C: u1 -- ori u2 ) ( x1 x2 -- | x1 )
+    POSTPONE OVER
+    POSTPONE =
+    ?OF
+    POSTPONE DROP
+; IMMEDIATE
+
+: ENDOF ( C: ori1 u -- ori2 u ) ( -- ) SWAP POSTPONE ELSE SWAP ; IMMEDIATE
 
 
 \ Defining words ===============================================================
@@ -665,7 +686,7 @@
 VARIABLE BASE
 : HEX     ( -- ) 10 BASE ! ;
 : DECIMAL ( -- ) 0A BASE ! ;
-DECIMAL
+HEX
 
 100 CONSTANT #sz
 #sz BUFFER: #buf
@@ -758,7 +779,6 @@ VARIABLE #idx
     CR
 ;
 
-
 : FORGET-NAME ( nt -- ) DUP @ LATEST ! CP ! ;
 
 : FORGET ( "<spaces>name" -- )
@@ -821,5 +841,6 @@ VARIABLE (source-id)
 
 \ Start ========================================================================
 
+DECIMAL
 greet
-echo ON
+echo ON QUIT

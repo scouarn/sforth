@@ -13,7 +13,7 @@
 ## System constants
 
 .equ DSTACK_SZ, 0x4000 # TODO: dynamic allocation using mmap syscall
-.equ DICT_SZ,   0x4000 # TODO: dynamic allocation using mmap syscall
+.equ DICT_SZ,   0x5000 # TODO: dynamic allocation using mmap syscall
 
 .equ TIB_SZ, 256
 .equ WORD_SZ,   256
