@@ -729,7 +729,6 @@ VARIABLE #idx
 : [DEFINED]   ( "<spaces>name" -- flag ) PARSE-NAME find NIP NIP 0<> ; IMMEDIATE
 : [UNDEFINED] ( "<spaces>name" -- flag ) PARSE-NAME find NIP NIP 0=  ; IMMEDIATE
 
-
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ NOTE: Not using 8/ because it's unsigned
 
 : ? ( addr -- ) @ . ;
@@ -740,7 +739,6 @@ VARIABLE #idx
     DEPTH 1 ?DO S0 I 1+ CELLS - @ . DUP LOOP
     DUP . \ Make shure %r8 is printed and not -8(%rbp)
 ;
-
 
 : NAME>STRING ( nt -- c-addr u ) 9 + DUP 1+ SWAP C@ ;
 : SEE ( "<spaces>ccc<space>" -- )
@@ -785,25 +783,13 @@ VARIABLE #idx
 : MARKER HERE CREATE , DOES> @ FORGET-NAME ;
 
 
-\ ==============================================================================
 \ Interpreter ==================================================================
-
 
 0 1 - CONSTANT -ONE
 0 INVERT CONSTANT TRUE
 0 CONSTANT FALSE
-
-: ABORT ( i*x -- ) S0 [ 4C C, 89 C, C5 C, ] QUIT ; \ mov %r8, %rbp
-
-: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
-    POSTPONE IF
-    POSTPONE ."
-    POSTPONE CR
-    POSTPONE ABORT
-    POSTPONE THEN
-; IMMEDIATE
-
 0 VALUE SOURCE-ID
+
 : SOURCE    ( -- c-addr u ) IN @ #IN @ ;
 
 : REFILL ( -- flag     )
@@ -812,13 +798,6 @@ VARIABLE #idx
      -ONE OF FALSE  ENDOF
      ( fileid ) FALSE TUCK
     ENDCASE
-;
-
-: EVALUATE ( i*x c-addr u -- j*x )
-    SOURCE 2>R >IN @ SOURCE-ID 2>R \ Save input
-    -ONE TO SOURCE-ID 0 >IN ! #IN ! IN !  \ Set source to the string
-    INTERPRET
-    2R> >IN ! TO SOURCE-ID 2R> IN ! #IN ! \ Restore input
 ;
 
 \ : SAVE-INPUT ( -- xn ... x1 n ) ;
@@ -832,14 +811,53 @@ VARIABLE #idx
     FLAG-IMM AND IF 1 ELSE -ONE THEN ;
 ;
 
-: greet ." Welcome to Scouarn Forth"
+
+: INTERPRET ( i*x -- j*x )
+    INTERPRET
+;
+
+
+: QUIT ( -- ) ( R: i*x -- )
+    RSP0 [ 4C C, 89 C, C4 C, ] DROP \ mov %r8, %rsp
+    0 TO SOURCE-ID
+    FALSE STATE !
+    BEGIN REFILL WHILE INTERPRET REPEAT
+    ." Bye!" CR BYE
+;
+
+: EVALUATE ( i*x c-addr u -- j*x )
+    SOURCE 2>R >IN @ SOURCE-ID 2>R \ Save input
+    -ONE TO SOURCE-ID 0 >IN ! #IN ! IN !  \ Set source to the string
+    INTERPRET
+    2R> >IN ! TO SOURCE-ID 2R> IN ! #IN ! \ Restore input
+;
+
+
+: ABORT ( i*x -- ) S0 [ 4C C, 89 C, C5 C, ] QUIT ; \ mov %r8, %rbp
+
+: ABORT" ( "ccc<quote>" -- ) ( i*x x -- | i*x ) ( R: j*x -- | j*x )
+    POSTPONE IF
+    POSTPONE ."
+    POSTPONE CR
+    POSTPONE ABORT
+    POSTPONE THEN
+; IMMEDIATE
+
+
+: coldstart
+    DECIMAL
+
+    ." Welcome to Scouarn Forth"
+
     CR ." used: "
     HERE CP0 - . ." total, "
     CP1  CP0 - . ." kernel, "
     HERE CP1 - . ." user "
     UNUSED CR ." free: " .
     CR CR
+
+    ECHO ON
+    QUIT
 ;
 
-\ Start ========================================================================
-DECIMAL greet ECHO ON QUIT
+coldstart

@@ -367,7 +367,8 @@ DEFINE_WORD REFILL, "REFILL"
         setz    %al             # 0 if rbx <> 0
         movzxb  %al, %rax
         decq    %rax            # -1 (TRUE) if rbx <> 0
-        DPUSH   %rax
+        DPUSH   %r8
+        mov     %rax, %r8
         ret
 
 
