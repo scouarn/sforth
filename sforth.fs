@@ -1,17 +1,6 @@
 : \ 0A scan-until ; IMMEDIATE
 : ( 29 scan-until ; IMMEDIATE
 
-\ TODO:
-\ >NUMBER and standard number parser
-\ ENVIRONMENT?
-\ TO and VALUE
-\ When we have the new interpreter : Remove echo from bootstrap
-\ QUIT: check for stack overflow
-\ Dyn alloc with mmap when ALLOT which becomes a primitive called by , and C,
-\ Write the system label
-\ Run the test suite
-
-
 \ Stack ========================================================================
 
 : sp+ 48 C, 8D C, 6D C, 08 C, ; \ lea    8(%rbp), %rbp
@@ -343,9 +332,14 @@
 : 0>= (     n -- flag ) [ cc-ge 0cmp, ] ;
 : 0<= (     n -- flag ) [ cc-le 0cmp, ] ;
 
-\ TODO  WITHIN
 
-: D0= ( h l -- flag ) 0= ( h flag ) SWAP 0= ( flag flag ) AND ;
+\ Reference implementation for 2's complement machines
+\    (lo < hi and (lo <= x and x < hi))
+\ or (lo > hi and (lo <= x or  x < hi))
+: WITHIN ( x lo hi -- flag ) OVER - ( x lo hi-lo ) >R - R> ( x-lo hi-lo ) U< ;
+
+
+: D0= ( hi lo -- flag ) 0= ( h flag ) SWAP 0= ( flag flag ) AND ;
 
 
 \ Compilation/utility ==========================================================
@@ -506,7 +500,7 @@
 : OF ( C: u1 -- ori u2 ) ( x1 x2 -- | x1 )
     POSTPONE OVER
     POSTPONE =
-    ?OF
+    POSTPONE ?OF
     POSTPONE DROP
 ; IMMEDIATE
 
@@ -734,6 +728,13 @@ VARIABLE #idx
 
 \ Tools ========================================================================
 
+: CS-ROLL ROLL ;
+: CS-PICK PICK ;
+
+: [DEFINED]   ( "<spaces>name" -- flag ) PARSE-NAME find NIP NIP 0<> ; IMMEDIATE
+: [UNDEFINED] ( "<spaces>name" -- flag ) PARSE-NAME find NIP NIP 0=  ; IMMEDIATE
+
+
 : DEPTH ( -- +n ) SP@ S0 SWAP - 8 / ; \ NOTE: Not using 8/ because it's unsigned
 
 : ? ( addr -- ) @ . ;
@@ -810,7 +811,14 @@ VARIABLE #idx
 VARIABLE (source-id)
 : SOURCE-ID ( -- 0|-1     ) (source-id) @ ;
 : SOURCE    ( -- c-addr u ) IN @ #IN @ ;
-: REFILL    ( -- flag     ) SOURCE-ID 0= IF REFILL ELSE FALSE THEN ;
+
+: REFILL ( -- flag     )
+    SOURCE-ID CASE
+        0 OF REFILL ENDOF
+     -ONE OF FALSE  ENDOF
+     ( fileid ) FALSE TUCK
+    ENDCASE
+;
 
 : EVALUATE ( i*x c-addr u -- j*x )
     SOURCE 2>R >IN @ SOURCE-ID 2>R \ Save input
@@ -840,7 +848,4 @@ VARIABLE (source-id)
 ;
 
 \ Start ========================================================================
-
-DECIMAL
-greet
-echo ON QUIT
+DECIMAL greet ECHO ON QUIT

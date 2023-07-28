@@ -1,29 +1,15 @@
-### Scouarn Forth
-# Bootstrap system
-
-## Refs :
-# - https://compilercrim.es/bootstrap/miniforth/#parsing
-# - https://notryan.com/snippets/forth/forth-tux.html
-# - https://www.forth.com/starting-forth/9-forth-execution/
-# - https://forth-standard.org/standard/core
-# - https://rwmj.wordpress.com/2010/08/07/jonesforth-git-repository/
-# - https://dacvs.neocities.org/SF/
+### Scouarn Forth Bootstrap system
+# %rbp: data stack pointer
+# %r8:  top of the stack
 
 
 ## System constants
 
-.equ DSTACK_SZ, 0x4000 # TODO: dynamic allocation using mmap syscall
-.equ DICT_SZ,   0x5000 # TODO: dynamic allocation using mmap syscall
-
-.equ TIB_SZ, 256
-.equ WORD_SZ,   256
-
-.equ FLAG_IMM,    0x01
-.equ FLAG_HIDDEN, 0x02
-
-.equ TRUE_VAL,  (~0)
-.equ FALSE_VAL, 0
-
+.equ DSTACK_SZ,         0x4000 # TODO: dynamic allocation using mmap syscall
+.equ DICT_SZ,           0x5000 # TODO: dynamic allocation using mmap syscall
+.equ TIB_SZ,            256
+.equ FLAG_IMM,          0x01
+.equ FLAG_HIDDEN,       0x02
 
 #include <asm/unistd.h>
 #define STDIN  0
@@ -31,9 +17,6 @@
 
 
 ## Stacks
-
-# %rbp: data stack pointer
-# %r8:  top of the stack
 
         .bss
 rstack_init:  .quad 0 # Return stack initial value
@@ -87,7 +70,6 @@ DEFINE_WORD \label, \name, \flags
         ret
 .endm
 
-
         .section .dictionary, "awx", @progbits
 dict_start:
 
@@ -101,11 +83,16 @@ DEFINE_CONST    CP,             "CP",           curr_def
 DEFINE_CONST    CPZero,         "CP0",          dict_start
 DEFINE_CONST    CPOne,          "CP1",          user_dict_start
 DEFINE_CONST    brk,            "brk",          dict_end
-DEFINE_CONST    echo,           "echo",         do_echo
+DEFINE_CONST    ECHO,           "ECHO",         do_echo
 dict_end:       .quad (user_dict_start+DICT_SZ)
 curr_def:       .quad user_dict_start
 state:          .quad 0
 do_echo:        .quad 0
+
+DEFINE_WORD RSP0, "RSP0"        # ( -- addr )
+        DPUSH   %r8
+        mov     rstack_init, %r8
+        ret
 
 DEFINE_CONST    IN,             "IN",           source
 DEFINE_CONST    SupIN,          ">IN",          source_idx
