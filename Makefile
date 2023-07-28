@@ -1,23 +1,11 @@
-TEST_DIR  = test
-
 CC = gcc
 CFLAGS = -g -nostdlib -static
 
-EXE = sforth
-
-all: $(EXE)
-
-run: $(EXE)
-	@./run.sh
-
-db: $(EXE)
-	gdb $(EXE)
-
-table: $(EXE)
-	objdump -t $(EXE)
-
-$(EXE) : % : %.S
+sforth: sforth.S
 	$(CC) $(CFLAGS) -o $@ $<
 
+run: sforth
+	@./run.sh
+
 clean:
-	rm -f $(EXE)
+	rm -f sforth

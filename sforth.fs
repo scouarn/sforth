@@ -251,10 +251,13 @@
 
 \ : FM/MOD ( u n -- rem quot ) ; \ TODO
 
-: /     (   x1 x2  -- x3    ) /MOD NIP  ;
-: MOD   (   x1 x2  -- x3    ) /MOD DROP ;
-: */MOD ( n1 n2 n3 -- n4 n5 ) >R M* R> ( d n3 ) SM/REM ;
-: */    ( n1 n2 n3 -- n4    ) */MOD NIP ;
+: U/MOD  (   u1 u2  -- u3 u4 ) 0 SWAP UM/MOD ;
+: U*     (   u1 u2  -- u3    ) UM* DROP ;
+: /      (   x1 x2  -- x3    ) /MOD NIP ;
+: MOD    (   x1 x2  -- x3    ) /MOD DROP ;
+: */MOD  ( n1 n2 n3 -- n4 n5 ) >R M*  R> ( d  n3 ) SM/REM ;
+: U*/MOD ( u1 u2 u3 -- u4 u5 ) >R UM* R> ( ud u3 ) UM/MOD ;
+: */     ( n1 n2 n3 -- n4    ) */MOD NIP ;
 
 
 : shl-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
@@ -290,22 +293,58 @@
 : M+ ( d1 n -- d2 ) S>D D+ ;
 
 \ Unsigned double mixed multiplication
-\    Y  X
-\    0  Z
-\ * _____
-\    B  A     = X Z M*
-\    C  0     = X Y  *
-\ + _____
-\   t2 t1     = A B 0 C D+
-: DM* ( d1 n -- d2 ) ( X Y Z -- t1 t2 )
-    TUCK     ( X Z Y Z )
-    *        ( X Z C   )
-    >R M* R> ( A B C   )
-    0 SWAP   ( A B 0 C )
-    D+       ( t1 t2   )
+\ Double times single -> double product
+\ 
+\      Y  X
+\      0  Z
+\ *  ______
+\      B  A     B:A = X Z UM*
+\      C  0     C   = X Z U*
+\ +  ______
+\     t2 t1     t2 t3 = A B 0 C D+
+: UDM* ( ud1 u -- ud2 ) ( X Y Z -- t1 t2 )
+    TUCK    ( X Z Y Z   )
+    U* >R   ( X Z       ) ( R: C )
+    UM*     ( A B       )
+    R>      ( A B C   )
+    +       ( t1  t2    )
 ;
 
+\ Verion yielding triple product
+\ 
+\       Y  X
+\       0  Z
+\ *  _______
+\     0  B  A     B:A = X Z UM*
+\     D  C  0     D:C = X Z U*
+\ +  ________
+\     t3 t2 t1    t3:t2:t1 = A B 0 C D+
+\ 
+\ : UDM* ( ud1 u -- t ) ( X Y Z -- t1 t2 t3 )
+\     TUCK        ( X Z Y Z   )
+\     UM* 2>R     ( X Z       ) ( R: C D )
+\     UM*         ( A B       )
+\     0 2R>       ( A B 0 C D )
+\     D+          ( t1 t2 t3  )
+\ ;
 
+\ Unsigned double mixed division
+\ Double dividend, single divisor, single remainder, double quotient
+\ Can be modified for triple over single division
+\ 
+\   W  Y   X  | Z
+\   Z*Qh     |______    \ 1: W:Y = Z*Qh + Rh      Divide Y (0 extended) by Z
+\ - ____     | Qh Ql
+\     Rh  X  |          \ 2: Rh:X = Z*Ql + Rl   Divide X (Rh extended) by Z
+\      Ql*Z  |
+\   - _____  |
+\       Rl   |
+: UD/MOD ( t n -- rem dquot ) ( X Y Z -- Rl Ql Qh ) \ Same as in Gforth
+    TUCK        ( X  Z  Y  Z )
+    U/MOD  >R   ( X  Z  Rh   ) ( R: Qh )    \ 1
+    SWAP        ( X  Rh Z    )
+    UM/MOD R>   ( Rl Ql Qh   )              \ 2
+;
 
 
 \ Logical ======================================================================
@@ -788,9 +827,8 @@ VARIABLE #idx
 : >digit ( u -- char ) DUP 9 > IF [CHAR] A + 0A - ELSE [CHAR] 0 + THEN ;
 
 : # ( ud1 -- ud2 )
-    BASE @ UM/MOD ( rem quot ) \ TODO Handle double division
-    SWAP >digit HOLD ( quot )
-    0 ( ud2 )
+    BASE @ UD/MOD ( rem ud2 )
+    ROT >digit HOLD ( ud2 )
 ;
 
 : #S ( ud1 -- ud2 )
@@ -825,7 +863,7 @@ VARIABLE #idx
         DUP BASE @ U>= IF DROP EXIT THEN \ Stop if incompatible with base
 
         -ROT 1 /STRING 2>R ( ud digit ) \ Next char
-        >R BASE @ DM* R> M+ \ Mult by base and add digit
+        >R BASE @ UDM* R> M+ \ Mult by base and add digit  TODO error on overflow (Using a triple product)
         2R> ( ud2 c-addr2 u2 )
     REPEAT
 ;
