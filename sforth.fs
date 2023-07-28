@@ -26,7 +26,7 @@
         4C C, 8B C, 45 C, 08 C, \ mov 8(%rbp), %r8
 ] ;
 
-: TUCK ( x1 x2   -- x2     ) [
+: TUCK ( x1 x2   -- x2 x1 x2 ) [
     48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax
     4C C, 89 C, 45 C, 00 C, \ mov     %r8, (%rbp)
     sp-
@@ -55,7 +55,8 @@
 ] ;
 
 
-: rdrop ( -- ) ( R: x -- ) 48 C, 83 C, C4 C, 08 C, ; IMMEDIATE \ add $8, %rsp
+: rdrop  ( -- ) ( R: x -- ) 48 C, 83 C, C4 C, 08 C, ; IMMEDIATE \ add $8,  %rsp
+: 2rdrop ( -- ) ( R: x -- ) 48 C, 83 C, C4 C, 10 C, ; IMMEDIATE \ add $16, %rsp
 
 : SP@   ( -- addr ) [
     sp-  4C C, 89 C, 45 C, 00 C, \ mov  %r8, (%rbp)
@@ -90,8 +91,8 @@
 : 2R> ( -- x1 x2 )   ( R: x1 x2 -- )
     48 C, 8D C, 6D C, F0 C, \ lea   -16(%rbp), %rbp
     4C C, 89 C, 45 C, 08 C, \ mov   %r8, 8(%rbp)
-    8F C, 45 C, 00 C,       \ pop  (%rbp)
     41 C, 58 C,             \ pop  %r8
+    8F C, 45 C, 00 C,       \ pop  (%rbp)
 ; IMMEDIATE
 
 : 2R@ ( -- x1 x2 )   ( R: x1 x2 -- x1 x2 )
@@ -278,6 +279,33 @@
     49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
     49 C, D3 C, E8 C,       \ shl   %cl, %r8
 ] ;
+
+: D+ ( d1 d2 -- d3 ) [ ( l1:16 h1:8 l2:0 h2:r8 -- l3:16 h3:r8 )
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax      l2
+    48 C, 01 C, 45 C, 10 C, \ addq    %rax, 16(%rbp)    l1 += l2 -> l3
+    4C C, 13 C, 45 C, 08 C, \ adcq    8(%rbp), %r8      h2 += h1 -> h3
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: M+ ( d1 n -- d2 ) S>D D+ ;
+
+\ Unsigned double mixed multiplication
+\    Y  X
+\    0  Z
+\ * _____
+\    B  A     = X Z M*
+\    C  0     = X Y  *
+\ + _____
+\   t2 t1     = A B 0 C D+
+: DM* ( d1 n -- d2 ) ( X Y Z -- t1 t2 )
+    TUCK     ( X Z Y Z )
+    *        ( X Z C   )
+    >R M* R> ( A B C   )
+    0 SWAP   ( A B 0 C )
+    D+       ( t1 t2   )
+;
+
+
 
 
 \ Logical ======================================================================
@@ -543,6 +571,10 @@
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
 : BUFFER:  ( u "<spaces>name" -- ) ( -- a-addr ) CREATE ALLOT ;
 
+0 1 -    CONSTANT -ONE
+0 INVERT CONSTANT TRUE
+0        CONSTANT FALSE
+
 
 : :NONAME ( -- xt ) ( -- xt )
     HERE LATEST DUP @ ( here latest prev-addr ) , \ Set previous field
@@ -669,8 +701,10 @@
     R> CHAR+ R> ( c-addr1 c-addr3 u ) MOVE \ Copy string data
 ; IMMEDIATE
 
+: /STRING ( c-addr1 u1 n -- c-addr2 u2 ) TUCK - >R CHARS + R> ;
 
-\ Number IO ====================================================================
+
+\ Pictured numeric output ======================================================
 
 VARIABLE BASE
 : HEX     ( -- ) 10 BASE ! ;
@@ -721,6 +755,71 @@ VARIABLE #idx
 : .X   (   u -- ) BASE @ SWAP HEX 0 <# 10 0 DO # LOOP #> TYPE SPACE BASE ! ;
 
 
+\ Number parser ================================================================
+
+: digit> ( char -- -1|u )
+    DUP  [CHAR] 0 U<  IF DROP -ONE  EXIT THEN
+    DUP  [CHAR] 9 U<= IF [CHAR] 0 - EXIT THEN
+    DUP  [CHAR] A U<  IF DROP -ONE  EXIT THEN
+    DUP  [CHAR] Z U<= IF [ 0A CHAR A - ] LITERAL + EXIT THEN
+    DUP  [CHAR] a U<  IF DROP -ONE  EXIT THEN
+    DUP  [CHAR] z U<= IF [ 0A CHAR a - ] LITERAL + EXIT THEN
+    DROP -ONE
+;
+
+: >NUMBER ( ud1 c-addr1 u1 -- ud2 c-addr2 u2 ) \ Standard number parsing word
+    BEGIN DUP WHILE
+        OVER C@ \ Get char
+        digit> DUP 0<  IF DROP EXIT THEN \ Convert digit to number
+        DUP BASE @ U>= IF DROP EXIT THEN \ Stop if incompatible with base
+
+        -ROT 1 /STRING 2>R ( ud digit ) \ Next char
+        >R BASE @ DM* R> M+ \ Mult by base and add digit
+        2R> ( ud2 c-addr2 u2 )
+    REPEAT
+;
+
+: number ( c-addr u1 -- u2 flag ) \ Parse unsigned number
+    DUP 0= IF 2DROP 0 FALSE EXIT THEN
+    2>R 0 0 2R> >NUMBER ( ud c-addr u )
+    0= >R ( ud c-addr ) 2DROP ( u ) R>
+;
+
+: number ( c-addr u -- n flag ) \ Parse signed number
+    DUP 0= IF 2DROP 0 FALSE EXIT THEN
+    OVER C@ [CHAR] - = DUP >R \ is-signed flag
+    IF 1 /STRING THEN \ Next char if signed
+    number ( u flag ) SWAP R> IF NEGATE THEN SWAP ( n flag )
+;
+
+: number ( c-addr u -- n flag ) \ Parse signed number with base
+    DUP 0= IF 2DROP 0 FALSE EXIT THEN
+    BASE @ >R
+
+    OVER C@ CASE
+        [CHAR] # OF DECIMAL  ENDOF
+        [CHAR] $ OF HEX      ENDOF
+        [CHAR] % OF 2 BASE ! ENDOF
+        ( default ) >R -ONE /STRING R> \ If not base is present ignore
+    ENDCASE
+
+    1 /STRING number
+
+    R> BASE !
+;
+
+: charlit ( c-addr u -- -1|char ) \ Check for '<char>' notation
+                            3 <> IF DROP -ONE EXIT THEN
+    DUP           C@ [CHAR] ' <> IF DROP -ONE EXIT THEN
+    DUP 2 CHARS + C@ [CHAR] ' <> IF DROP -ONE EXIT THEN
+    CHAR+ C@
+;
+
+: number ( c-addr u -- n flag ) \ Parse char literal or signed number with base
+    2DUP charlit DUP 0> IF TRUE ELSE DROP number THEN
+;
+
+
 \ Tools ========================================================================
 
 : CS-ROLL ROLL ;
@@ -736,7 +835,7 @@ VARIABLE #idx
 : .S ( -- )
     DEPTH 0< IF ." UNDERFLOW " EXIT THEN
     DEPTH 0= IF ." EMPTY "     EXIT THEN
-    DEPTH 1 ?DO S0 I 1+ CELLS - @ . DUP LOOP
+    DEPTH 1 ?DO S0 I 1+ CELLS - @ . LOOP
     DUP . \ Make shure %r8 is printed and not -8(%rbp)
 ;
 
@@ -785,9 +884,6 @@ VARIABLE #idx
 
 \ Interpreter ==================================================================
 
-0 1 - CONSTANT -ONE
-0 INVERT CONSTANT TRUE
-0 CONSTANT FALSE
 0 VALUE SOURCE-ID
 
 : SOURCE    ( -- c-addr u ) IN @ #IN @ ;
@@ -812,16 +908,20 @@ VARIABLE #idx
 ;
 
 
-: INTERPRET ( i*x -- j*x )
-    INTERPRET
-;
-
+DEFER INTERPRET \ Allow user-defined interpreter
 
 : QUIT ( -- ) ( R: i*x -- )
     RSP0 [ 4C C, 89 C, C4 C, ] DROP \ mov %r8, %rsp
     0 TO SOURCE-ID
     FALSE STATE !
-    BEGIN REFILL WHILE INTERPRET REPEAT
+
+    BEGIN
+        CR REFILL
+    WHILE
+        SPACE INTERPRET
+        ."  ok" STATE @ IF ."  (compiling)" THEN
+    REPEAT
+
     ." Bye!" CR BYE
 ;
 
@@ -829,7 +929,7 @@ VARIABLE #idx
     SOURCE 2>R >IN @ SOURCE-ID 2>R \ Save input
     -ONE TO SOURCE-ID 0 >IN ! #IN ! IN !  \ Set source to the string
     INTERPRET
-    2R> >IN ! TO SOURCE-ID 2R> IN ! #IN ! \ Restore input
+    2R> TO SOURCE-ID >IN ! 2R> #IN ! IN ! \ Restore input
 ;
 
 
@@ -844,20 +944,41 @@ VARIABLE #idx
 ; IMMEDIATE
 
 
+: (INTERPRET) ( i*x -- j*x ) \ Main interpreter
+    BEGIN
+        PARSE-NAME DUP
+    WHILE
+        2DUP 2>R find ( xt flags 0|nt )
+        IF 2rdrop ( c-addr u xt flags )
+            FLAG-IMM AND STATE @ 0= OR IF
+                EXECUTE
+            ELSE
+                COMPILE,
+            THEN
+        ELSE ( xt flags ) 2DROP
+            2R@ number IF ( n )
+                STATE @ IF POSTPONE LITERAL THEN
+                2rdrop
+            ELSE
+                ." **NOT FOUND** " 2R> TYPE ABORT
+            THEN
+        THEN
+    REPEAT
+    ( c-addr u ) 2DROP
+;
+
+
 : coldstart
     DECIMAL
-
     ." Welcome to Scouarn Forth"
-
     CR ." used: "
     HERE CP0 - . ." total, "
     CP1  CP0 - . ." kernel, "
     HERE CP1 - . ." user "
-    UNUSED CR ." free: " .
-    CR CR
+    UNUSED CR ." free: " . CR
 
-    ECHO ON
-    QUIT
+    ['] (INTERPRET) IS INTERPRET
+    ECHO ON QUIT \ No return
 ;
 
 coldstart

@@ -463,7 +463,7 @@ DEFINE_WORD BYE, "BYE"
         syscall
 
 
-DEFINE_WORD QUIT, "QUIT"
+DEFINE_WORD QUIT, "(quit)"
         movq    rstack_init, %rsp       # Empty the return stack
         movq    $0, state               # Interpreter
 .Lquit_loop:
@@ -472,7 +472,7 @@ DEFINE_WORD QUIT, "QUIT"
         jz      xt_BYE                  # No return
         movb    $' ', %al
         call    _ECHO
-        call    xt_INTERPRET
+        call    _INTERPRET
 
         cmpq    $0, do_echo             # Ignore if echo is off
         jz      .Lquit_loop
@@ -539,7 +539,7 @@ DEFINE_WORD find, "find"   # ( c-addr u -- xt flags 0|nt )
         ret
 
 
-DEFINE_WORD INTERPRET, "INTERPRET"
+_INTERPRET:
 .Linterpret_loop:
         movb    $' ', %bl
         call    _SKIP
@@ -609,7 +609,7 @@ DEFINE_WORD INTERPRET, "INTERPRET"
         jmp     xt_BYE          # No return
 
 .Linterpret_msg:
-        .ascii  "**NOT FOUND ** "
+        .ascii  "**NOT FOUND** "
         .equ .Linterpret_msg_sz, (.-.Linterpret_msg)
 .Lcrlf:
         .ascii  "\r\n"
