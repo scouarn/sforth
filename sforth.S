@@ -6,7 +6,7 @@
 ## System constants
 
 .equ DSTACK_SZ,         0x4000 # TODO: dynamic allocation using mmap syscall
-.equ DICT_SZ,           0x5000 # TODO: dynamic allocation using mmap syscall
+.equ DICT_SZ,           0x6000 # TODO: dynamic allocation using mmap syscall
 .equ TIB_SZ,            256
 .equ FLAG_IMM,          0x01
 .equ FLAG_HIDDEN,       0x02
@@ -83,11 +83,9 @@ DEFINE_CONST    CP,             "CP",           curr_def
 DEFINE_CONST    CPZero,         "CP0",          dict_start
 DEFINE_CONST    CPOne,          "CP1",          user_dict_start
 DEFINE_CONST    brk,            "brk",          dict_end
-DEFINE_CONST    ECHO,           "ECHO",         do_echo
 dict_end:       .quad (user_dict_start+DICT_SZ)
 curr_def:       .quad user_dict_start
 state:          .quad 0
-do_echo:        .quad 0
 
 DEFINE_WORD RSP0, "RSP0"        # ( -- addr )
         DPUSH   %r8
@@ -286,19 +284,8 @@ DEFINE_WORD IMMEDIATE, "IMMEDIATE", # ( -- )
 
 ## Parsing
 
-_ECHO: # Emit if do_echo is true
-        cmpq    $0, do_echo
-        jne     _EMIT
-        ret
-
-
 _REFILL: # ( -- ) Read line in source buff, update source_idx and source_cnt
         # %rbx := Number of non special chars read (one newline -> 1)
-
-        movb    $'>', %al
-        call    _ECHO
-        movb    $' ', %al
-        call    _ECHO
 
         xorq    %rbx, %rbx      # Total number of chars read
         movq    $tib, %rdi
@@ -324,14 +311,6 @@ _REFILL: # ( -- ) Read line in source buff, update source_idx and source_cnt
         cmpq    $tib, %rdi # Ignore DEL on first col
         je      .Lrefill_loop
         dec     %rdi
-        push    %rdi
-        movb    $'\b', %al
-        call    _ECHO
-        movb    $' ', %al
-        call    _ECHO
-        movb    $'\b', %al
-        call    _ECHO
-        pop     %rdi
         jmp     .Lrefill_loop
 .Lrefill_not_del:
 
@@ -346,10 +325,6 @@ _REFILL: # ( -- ) Read line in source buff, update source_idx and source_cnt
         je      .Lrefill_end
 
         stosb                   # Add to buffer
-
-        push    %rdi
-        call    _ECHO           # Echo
-        pop     %rdi
 
         cmpq    $(tib+TIB_SZ), %rdi
         jl      .Lrefill_loop   # Stop on end of buffer
@@ -462,40 +437,15 @@ DEFINE_WORD BYE, "BYE"
         movq    $0, %rdi
         syscall
 
-
 DEFINE_WORD QUIT, "(quit)"
         movq    rstack_init, %rsp       # Empty the return stack
-        movq    $0, state               # Interpreter
+        movq    $0, state               # Interpreter mode
 .Lquit_loop:
         call    _REFILL
         test    %rbx, %rbx
-        jz      xt_BYE                  # No return
-        movb    $' ', %al
-        call    _ECHO
+        jz      xt_BYE
         call    _INTERPRET
-
-        cmpq    $0, do_echo             # Ignore if echo is off
-        jz      .Lquit_loop
-
-        cmpq    $0, state
-        jnz     .Lquit_compiling
-        movq    $.Lquit_msg, %rsi
-        movq    $QUIT_MSG_SZ, %rdx
-        jmp     .Lquit_ok
-.Lquit_compiling:
-        movq    $.Lquit_msg2, %rsi
-        movq    $QUIT_MSG2_SZ, %rdx
-        jmp     .Lquit_ok
-.Lquit_ok:
-        call    _TYPE
         jmp     .Lquit_loop
-
-.Lquit_msg:
-        .ascii  "ok\r\n"
-        .equ QUIT_MSG_SZ, (.-.Lquit_msg)
-.Lquit_msg2:
-        .ascii  "ok (compiling)\r\n"
-        .equ QUIT_MSG2_SZ, (.-.Lquit_msg2)
 
 
 _FIND: # ( rsi:c-addr rax:u -- rbx:0|nt rdi:xt dl:flags )

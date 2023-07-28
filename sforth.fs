@@ -655,9 +655,16 @@
 
 \ Strings ======================================================================
 
+0D CONSTANT #cr
+0A CONSTANT #lf
+08 CONSTANT #bs
+7F CONSTANT #del
+
 : SPACE  (   -- ) BL EMIT ;
 : SPACES ( u -- ) 0 DO SPACE LOOP ;
-: CR     (   -- ) 0D EMIT 0A EMIT ;
+: CR     (   -- ) #cr EMIT #lf EMIT ;
+: graph? ( char -- flag ) DUP 20 >= SWAP 7E <= AND ;
+
 
 : COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
@@ -882,23 +889,79 @@ VARIABLE #idx
 : MARKER HERE CREATE , DOES> @ FORGET-NAME ;
 
 
-\ Interpreter ==================================================================
+\ Text IO ======================================================================
 
 0 VALUE SOURCE-ID
+: SOURCE ( -- c-addr u ) IN @ #IN @ ;
 
-: SOURCE    ( -- c-addr u ) IN @ #IN @ ;
+0 CONSTANT sys-read
+1 CONSTANT sys-write
+0 CONSTANT stdin
+1 CONSTANT stdout
+2 CONSTANT stderr
 
-: REFILL ( -- flag     )
-    SOURCE-ID CASE
-        0 OF REFILL ENDOF
-     -ONE OF FALSE  ENDOF
-     ( fileid ) FALSE TUCK
-    ENDCASE
+: syscall3 ( num arg1 arg2 arg3 -- n ) [
+    48 C, 8B C, 45 C, 10 C, \ movq    16(%rbp), %rax
+    48 C, 8B C, 7D C, 08 C, \ movq    8(%rbp),  %rdi
+    48 C, 8B C, 75 C, 00 C, \ movq    0(%rbp),  %rsi
+    4C C, 89 C, C2 C,       \ movq    %r8,      %rdx
+    0F C, 05 C,             \ syscall
+    49 C, 89 C, C0 C,       \ movq    %rax, %r8
+    48 C, 8D C, 6D C, 18 C, \ lea     24(%rbp), %rbp
+] ;
+
+
+VARIABLE key-buf
+: KEY ( -- -1|char ) \ -1 on failure
+    sys-read stdin key-buf 1 syscall3
+    0< IF -ONE ELSE key-buf @ THEN
+;
+
+VARIABLE ECHO
+
+: ACCEPT ( c-addr +n1 -- +n2 ) \ -1 On failure
+    2>R 0 ( n2 )
+    BEGIN KEY CASE
+        DUP 0< ?OF 2rdrop DROP -ONE  EXIT ENDOF \ Error char
+
+        #cr OF 2rdrop            EXIT ENDOF \ OK
+        #lf OF 2rdrop            EXIT ENDOF \ OK
+        03  OF 2rdrop DROP 0     EXIT ENDOF \ C^C Cancel
+        04  OF 2rdrop ?DUP 0= IF -ONE THEN EXIT ENDOF \ C^D Terminate
+
+        #del OF ( n2 ) DUP 0> IF \ Ignore on first col
+                ECHO @ IF #bs EMIT SPACE #bs EMIT THEN
+                2R> -ONE /STRING 2>R \ Prev char
+                1-
+        THEN ENDOF
+
+        R@ 0<= ?OF DROP ENDOF \ No more space, ignore the rest
+
+        DUP graph? ?OF
+            ECHO @ IF DUP EMIT THEN
+            2R@ DROP C! \ Write
+            2R> 1 /STRING 2>R \ Next char
+            1+ ( n2 )
+        ENDOF 0
+
+        ( default ) ( >R ) DROP ( R> )
+    ENDCASE AGAIN
+;
+
+: REFILL ( -- flag )
+    SOURCE-ID IF FALSE ELSE
+        0 >IN !
+        TIB 100 ACCEPT
+        DUP #IN !
+        0>=
+    THEN
 ;
 
 \ : SAVE-INPUT ( -- xn ... x1 n ) ;
 \ : RESTORE-INPUT ( xn ... x1 n -- flag ) TRUE ;
 
+
+\ Interpreter ==================================================================
 
 : FIND ( c-addr -- c-addr 0 | xt 1 | xt -1 )
     DUP COUNT find ( c-addr xt flags 0|nt )
@@ -907,8 +970,8 @@ VARIABLE #idx
     FLAG-IMM AND IF 1 ELSE -ONE THEN ;
 ;
 
-
 DEFER INTERPRET \ Allow user-defined interpreter
+VARIABLE PROMPT
 
 : QUIT ( -- ) ( R: i*x -- )
     RSP0 [ 4C C, 89 C, C4 C, ] DROP \ mov %r8, %rsp
@@ -916,10 +979,11 @@ DEFER INTERPRET \ Allow user-defined interpreter
     FALSE STATE !
 
     BEGIN
-        CR REFILL
+        CR
+        PROMPT @ IF STATE @ IF ." C " ELSE ." > " THEN THEN
+        REFILL
     WHILE
-        SPACE INTERPRET
-        ."  ok" STATE @ IF ."  (compiling)" THEN
+        SPACE INTERPRET ." ok"
     REPEAT
 
     ." Bye!" CR BYE
@@ -968,7 +1032,7 @@ DEFER INTERPRET \ Allow user-defined interpreter
 ;
 
 
-: coldstart
+: RESET
     DECIMAL
     ." Welcome to Scouarn Forth"
     CR ." used: "
@@ -977,8 +1041,11 @@ DEFER INTERPRET \ Allow user-defined interpreter
     HERE CP1 - . ." user "
     UNUSED CR ." free: " . CR
 
+    ['] (PROMPT)    IS PROMPT
     ['] (INTERPRET) IS INTERPRET
-    ECHO ON QUIT \ No return
+    ECHO    ON
+    PROMPT  ON
+    ABORT \ No return
 ;
 
-coldstart
+RESET
