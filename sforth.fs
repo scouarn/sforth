@@ -682,6 +682,9 @@ VARIABLE key-buf
 VARIABLE emit-buf
 : EMIT ( char -- ) emit-buf ! sys-write stdout emit-buf 1 syscall3 DROP ;
 
+: TYPE ( c-addr u -- ) 2>R sys-write stdout 2R> syscall3 DROP ;
+
+
 \ Strings ======================================================================
 
 0D CONSTANT #cr

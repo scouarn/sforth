@@ -102,20 +102,6 @@ source_cnt:     .quad 0
 tib:            .skip TIB_SZ
 
 
-## IO
-
-DEFINE_WORD TYPE, "TYPE"        # ( c-addr u -- )
-        movq    %r8, %rdx
-        movq    0(%rbp), %rsi
-        movq    8(%rbp), %r8
-        addq    $16, %rbp
-_TYPE: # ( -- ) %rsi : c-addr, %rdx : u
-        movq    $__NR_write, %rax
-        movq    $STDOUT, %rdi
-        syscall
-        ret
-
-
 # Compilation
 
 DEFINE_WORD Lsq, "[", FLAG_IMM
@@ -295,14 +281,6 @@ _PARSE:  # bl:char -- rdi:c-addr rcx:u
         ret
 
 
-DEFINE_WORD PARSE "PARSE"       # ( char "ccc<char>" -- c-addr u )
-        call    xt_SCAN_UNTIL
-        DPUSH   %r8
-        DPUSH   %rdi            # c-addr
-        movq    %rcx, %r8       # u
-        ret
-
-
 DEFINE_WORD SCAN_WHILE, "scan-while"    # ( char "<chars>ccc" -- "ccc" )
         mov     %r8, %rbx
         DPOP    %r8
@@ -319,6 +297,14 @@ _SKIP:  # bl:char
         jmp     .Lskip_loop
 .Lskip_end:
         movq    %rsi, source_idx
+        ret
+
+
+DEFINE_WORD PARSE "PARSE"       # ( char "ccc<char>" -- c-addr u )
+        call    xt_SCAN_UNTIL
+        DPUSH   %r8
+        DPUSH   %rdi            # c-addr
+        movq    %rcx, %r8       # u
         ret
 
 
@@ -469,12 +455,18 @@ _INTERPRET:
 
 
 .Linterpret_not_found:
+        movq    $__NR_write, %rax       # Print error message
+        movq    $STDOUT, %rdi
         movq    $.Linterpret_msg, %rsi
         movq    $.Linterpret_msg_sz, %rdx
-        call    _TYPE           # Print message
+        syscall
+
+        movq    $__NR_write, %rax       # Print word
+        movq    $STDOUT, %rdi
         pop     %rdx            # u
         pop     %rsi            # c-addr
-        call    _TYPE           # Print word
+        syscall
+
         jmp     xt_BYE          # No return
 
 .Linterpret_msg:
