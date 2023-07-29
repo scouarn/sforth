@@ -964,6 +964,24 @@ VARIABLE #idx
 : CS-ROLL ROLL ;
 : CS-PICK PICK ;
 
+: N>R ( i*x n -- ) ( R: -- j*x n )
+    DUP \ n -> stored last
+    BEGIN DUP WHILE ( i*x n idx )
+        ROT R> ( j*x n idx x ret ) 2>R
+    1-
+    REPEAT ( n 0 ) DROP
+    R> ( n ret ) 2>R
+;
+
+: NR> ( -- i*x n ) ( R: j*x n )
+    2R> ( n ret ) >R
+    DUP ( n idx )
+    BEGIN DUP WHILE
+        2R> ( n idx x ret ) >R -ROT ( x n idx )
+    1-
+    REPEAT ( i*x n 0 ) DROP
+;
+
 : [DEFINED]   ( "<spaces>name" -- flag ) PARSE-NAME find NIP NIP 0<> ; IMMEDIATE
 : [UNDEFINED] ( "<spaces>name" -- flag ) PARSE-NAME find NIP NIP 0=  ; IMMEDIATE
 
@@ -1071,7 +1089,7 @@ VARIABLE ECHO
             1+ ( n2 )
         ENDOF 0
 
-        ( default ) ( >R ) DROP ( R> )
+        ( default ) >R DROP R>
     ENDCASE AGAIN
 ;
 
@@ -1084,8 +1102,17 @@ VARIABLE ECHO
     THEN
 ;
 
-\ : SAVE-INPUT ( -- xn ... x1 n ) ;
-\ : RESTORE-INPUT ( xn ... x1 n -- flag ) TRUE ;
+: SAVE-INPUT ( -- xn ... x1 n )
+    >IN @ 1 \ Works for TIB and EVALUATE string
+;
+
+: RESTORE-INPUT ( xn ... x1 n -- flag )
+    DUP 1 <> IF \ We did not put that there
+        0 ?DO DROP LOOP
+    ELSE
+        DROP >IN !
+    THEN
+;
 
 
 \ Interpreter ==================================================================
