@@ -863,6 +863,9 @@ VARIABLE emit-buf
     TRUE
 ;
 
+\ TODO Read that http://www.forth200x.org/escaped-strings.html
+\ : S\" ( C: "ccc<quote>" -- ) ( -- c-addr u )
+
 
 \ Pictured numeric output ======================================================
 
@@ -945,12 +948,14 @@ VARIABLE #idx
     REPEAT
 ;
 
+\ TODO return ( -- ud 2 | u 1 | x 0 ) to allow for the 'xxx.' notation
 : number ( c-addr u1 -- u2 flag ) \ Parse unsigned number
     DUP 0= IF 2DROP 0 FALSE EXIT THEN
     0 0 2SWAP >NUMBER ( ud c-addr u )
     0= >R ( ud c-addr ) 2DROP ( u ) R>
 ;
 
+\ TODO: return ud
 : number ( c-addr u -- n flag ) \ Parse signed number
     DUP 0= IF 2DROP 0 FALSE EXIT THEN
     OVER C@ [CHAR] - = DUP >R \ is-signed flag
@@ -1070,7 +1075,7 @@ VARIABLE #idx
 : ENVIRONMENT? ( c-addr u -- false | i*x true )
     2>R
     2R@ S" /COUNTED-STRING"     s= IF 2rdrop FF         TRUE  EXIT THEN
-    2R@ S" /HOLD"               s= IF 2rdrop 100        TRUE  EXIT THEN
+    2R@ S" /HOLD"               s= IF 2rdrop #sz        TRUE  EXIT THEN
     2R@ S" /PAD"                s= IF 2rdrop            FALSE EXIT THEN \ TODO About one page using dyn-alloc ?
     2R@ S" ADDRESS-UNIT-BITS"   s= IF 2rdrop 8          TRUE  EXIT THEN
     2R@ S" FLOORED"             s= IF 2rdrop FALSE      TRUE  EXIT THEN
