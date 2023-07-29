@@ -796,9 +796,15 @@ VARIABLE emit-buf
 
 \ Strings ======================================================================
 
-0D CONSTANT #cr
-0A CONSTANT #lf
+00 CONSTANT #nul
+07 CONSTANT #bel
 08 CONSTANT #bs
+09 CONSTANT #ht
+0A CONSTANT #lf
+0B CONSTANT #vt
+0C CONSTANT #ff
+0D CONSTANT #cr
+1B CONSTANT #esc
 7F CONSTANT #del
 
 : SPACE  (   -- ) BL EMIT ;
@@ -862,9 +868,6 @@ VARIABLE emit-buf
     2DROP
     TRUE
 ;
-
-\ TODO Read that http://www.forth200x.org/escaped-strings.html
-\ : S\" ( C: "ccc<quote>" -- ) ( -- c-addr u )
 
 
 \ Pictured numeric output ======================================================
@@ -1237,3 +1240,53 @@ VARIABLE PROMPT
 ;
 
 RESET
+
+
+\ TODO Read that http://www.forth200x.org/escaped-strings.html
+\ : S\" ( C: "ccc<quote>" -- ) ( -- c-addr u )
+
+
+\ Let's try a simpler problem first : print escaped in interpreter
+\ Then we replace EMIT by C, and keep track of total length
+\ -> by comparing HERE before and after ?
+\ TODO \x00 notation ?
+
+: esc-seq ( c-addr1 u1 -- c-addr2 u2 )
+    OVER C@ CASE
+        [CHAR] a OF #bel EMIT ENDOF
+        [CHAR] b OF #bs  EMIT ENDOF
+        [CHAR] e OF #esc EMIT ENDOF
+        [CHAR] f OF #ff  EMIT ENDOF
+        [CHAR] l OF #lf  EMIT ENDOF
+        [CHAR] m OF #cr  EMIT #lf EMIT ENDOF
+        [CHAR] n OF #cr  EMIT #lf EMIT ENDOF
+        [CHAR] q OF [CHAR] " EMIT ENDOF
+        [CHAR] r OF #cr  EMIT ENDOF
+        [CHAR] t OF #ht  EMIT ENDOF
+        [CHAR] v OF #vt  EMIT ENDOF
+        [CHAR] z OF #nul EMIT ENDOF
+        [CHAR] " OF [CHAR] " EMIT 2DROP [CHAR] " PARSE ENDOF \ Parse more
+        [CHAR] x OF [CHAR] X ENDOF \ TODO
+        [CHAR] \ OF [CHAR] \ EMIT ENDOF
+        ( default ) \ Ignore
+    ENDCASE
+;
+
+: .\( ( "ccc<quote>" -- )
+    [CHAR] " PARSE ( c-addr u )
+
+    BEGIN DUP WHILE
+        OVER C@
+        DUP [CHAR] \ = IF
+            DROP 1 /STRING esc-seq
+        ELSE
+            EMIT
+        THEN
+        1 /STRING
+    REPEAT
+    2DROP
+;
+
+
+HEX CR .\( B\qlabla"
+
