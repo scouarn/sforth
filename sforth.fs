@@ -192,6 +192,21 @@
     4C C, 03 C, 45 C, 00 C, sp+ \ add   (%rbp), %r8
 ] ;
 
+: D+ ( d1 d2 -- d3 ) [ ( l1:16 h1:8 l2:0 h2:r8 -- l3:16 h3:r8 )
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax      l2
+    48 C, 01 C, 45 C, 10 C, \ addq    %rax, 16(%rbp)    l1 += l2 -> l3
+    4C C, 13 C, 45 C, 08 C, \ adcq    8(%rbp), %r8      h2 += h1 -> h3
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
+: D- ( d1 d2 -- d3 ) [ ( l1:16 h1:8 l2:0 h2:r8 -- l3:16 h3:r8 )
+    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax      l2
+    48 C, 29 C, 45 C, 10 C, \ subq    %rax, 16(%rbp)    l1 -= l2 -> l3
+    4C C, 1B C, 45 C, 08 C, \ sbbq    8(%rbp), %r8      h2 -= h1 -> -h3
+    49 C, F7 C, D8 C,       \ neg     %r8               h3
+    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
+] ;
+
 : - ( n1 | u1 n2 | u2 -- n3 | u3 ) [
     4C C, 2B C, 45 C, 00 C, sp+ \ sub   (%rbp),%r8
     49 C, F7 C, D8 C,           \ neg   %r8
@@ -251,6 +266,9 @@
 
 \ : FM/MOD ( u n -- rem quot ) ; \ TODO
 
+
+: M+     (   d1   n -- d2    ) S>D D+ ;
+: M-     (   d1   n -- d2    ) S>D D- ;
 : U/MOD  (   u1 u2  -- u3 u4 ) 0 SWAP UM/MOD ;
 : U*     (   u1 u2  -- u3    ) UM* DROP ;
 : /      (   x1 x2  -- x3    ) /MOD NIP ;
@@ -261,13 +279,23 @@
 
 
 : shl-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E0 C, C, ; \ shl $u, %r8
-: shr-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, E8 C, C, ; \ shr $u, %r8
+: sar-imm, ( u -- ) ( x -- x<<u ) 49 C, C1 C, F8 C, C, ; \ shr $u, %r8
 : 2* ( x1 -- x2 ) [ 1 shl-imm, ] ;
 : 4* ( x1 -- x2 ) [ 2 shl-imm, ] ;
 : 8* ( x1 -- x2 ) [ 3 shl-imm, ] ;
-: 2/ ( x1 -- x2 ) [ 1 shr-imm, ] ;
-: 4/ ( x1 -- x2 ) [ 2 shr-imm, ] ;
-: 8/ ( x1 -- x2 ) [ 3 shr-imm, ] ;
+: 2/ ( x1 -- x2 ) [ 1 sar-imm, ] ;
+: 4/ ( x1 -- x2 ) [ 2 sar-imm, ] ;
+: 8/ ( x1 -- x2 ) [ 3 sar-imm, ] ;
+
+: D2* ( xd1 -- xd2 ) [
+    48 C, D1 C, 65 C, 00 C, \ salq  (%rbp)  Low
+    49 C, D1 C, D0 C,       \ rclq  %8      High
+] ;
+
+: D2/ ( xd1 -- xd2 ) [
+    49 C, D1 C, F8 C,       \ sarq  %r8     High
+    48 C, D1 C, 5D C, 00 C, \ rclq  (%rbp)  Low
+] ;
 
 : LSHIFT ( x1 u -- x2 ) [
     48 C, 8B C, 4D C, 00 C, \ mov (%rbp), %rcx
@@ -282,15 +310,6 @@
     49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
     49 C, D3 C, E8 C,       \ shl   %cl, %r8
 ] ;
-
-: D+ ( d1 d2 -- d3 ) [ ( l1:16 h1:8 l2:0 h2:r8 -- l3:16 h3:r8 )
-    48 C, 8B C, 45 C, 00 C, \ mov     (%rbp), %rax      l2
-    48 C, 01 C, 45 C, 10 C, \ addq    %rax, 16(%rbp)    l1 += l2 -> l3
-    4C C, 13 C, 45 C, 08 C, \ adcq    8(%rbp), %r8      h2 += h1 -> h3
-    48 C, 8D C, 6D C, 10 C, \ lea     16(%rbp), %rbp
-] ;
-
-: M+ ( d1 n -- d2 ) S>D D+ ;
 
 \ Unsigned double mixed multiplication
 \ Double times single -> double product
@@ -404,9 +423,6 @@
 \    (lo < hi and (lo <= x and x < hi))
 \ or (lo > hi and (lo <= x or  x < hi))
 : WITHIN ( x lo hi -- flag ) OVER - ( x lo hi-lo ) >R - R> ( x-lo hi-lo ) U< ;
-
-
-: D0= ( hi lo -- flag ) 0= ( h flag ) SWAP 0= ( flag flag ) AND ;
 
 
 \ Compilation/utility ==========================================================
@@ -606,13 +622,25 @@
     POSTPONE R> POSTPONE 1+ \ Compile code to get child's PFA
 ; IMMEDIATE
 
+
 : CONSTANT ( x "<spaces>name" -- ) ( -- x      ) : POSTPONE LITERAL POSTPONE ; ;
 : VARIABLE (   "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , ;
 : BUFFER:  ( u "<spaces>name" -- ) ( -- a-addr ) CREATE ALLOT ;
 
-0 1 -    CONSTANT -ONE
-0 INVERT CONSTANT TRUE
-0        CONSTANT FALSE
+: 2LITERAL ( C: x1 x2 -- ) ( -- x1 x2 )
+    SWAP POSTPONE LITERAL POSTPONE LITERAL
+; IMMEDIATE
+
+: 2CONSTANT ( xd "<spaces>name" -- ) ( -- xd ) : POSTPONE 2LITERAL POSTPONE ; ;
+: 2VARIABLE (    "<spaces>name" -- ) ( -- a-addr ) CREATE 0 , 0 , ;
+
+0 1 -           CONSTANT -ONE
+0 INVERT        CONSTANT TRUE
+0               CONSTANT FALSE
+-ONE 1 RSHIFT   CONSTANT MAX-N
+-ONE            CONSTANT MAX-U
+-ONE MAX-N     2CONSTANT MAX-D
+-ONE -ONE      2CONSTANT MAX-UD
 
 
 : :NONAME ( -- xt ) ( -- xt )
@@ -651,8 +679,24 @@
 
 \ TODO Redo in machine code (?)
 : ABS (    n1 -- u    ) DUP 0< IF NEGATE THEN ;
-: MIN ( n1 n2-- n1|n2 ) 2DUP < IF DROP ELSE NIP THEN ;
+: MIN ( n1 n2-- n1|n2 ) 2DUP < IF DROP ELSE NIP THEN ; \ TODO use CMOVcc
 : MAX ( n1 n2-- n1|n2 ) 2DUP > IF DROP ELSE NIP THEN ;
+
+: DINVERT ( xd1 -- xd2 ) SWAP INVERT SWAP INVERT ;
+: DNEGATE (  d1 --  d2 ) DINVERT 1 M+ ; \ 2's complement
+
+: D0= (      xd -- flag ) 0= SWAP 0= AND ;
+: D0< (       d -- flag ) 0< NIP ;
+: D0> (       d -- flag ) 0> NIP ;
+: D=  ( xd1 xd2 -- flag ) ROT ( l1 l2 h2 h1 ) = >R = R> AND ;
+: D<  (  d1  d2 -- flag ) D- D0< ;
+: D>  (  d1  d2 -- flag ) D- D0> ;
+: DU< ( ud1 ud2 -- flag ) ROT ( l1 l2 h2 h1 ) 2DUP U> >R D= >R U< R> AND R> OR ;
+: 2ROT ( xd1 xd2 xd3 -- xd2 xd3 xd1 ) 2>R 2SWAP 2R> 2SWAP ;
+
+: DABS (    d  -- ud    ) DUP 0< IF DNEGATE THEN ;
+: DMIN ( d1 d2 -- d1|d2 ) 2OVER 2OVER D> IF 2SWAP THEN 2DROP ;
+: DMAX ( d1 d2 -- d1|d2 ) 2OVER 2OVER D< IF 2SWAP THEN 2DROP ;
 
 : CMOVE ( c-addr1 c-addr2 u -- ) [
     4C C, 89 C, C1 C,       \ mov   %r8, %rcx
@@ -837,10 +881,16 @@ VARIABLE #idx
 
 : SIGN (   n -- ) 0< IF [CHAR] - HOLD THEN ;
 : #pad (   n -- ) #sz #idx @ - - BEGIN DUP 0> WHILE BL HOLD 1- REPEAT ;
-: U.   (   u -- )           0 ( ud ) <# #S          #> TYPE SPACE ;
-: .    (   u -- ) DUP ABS S>D (  d ) <# #S ROT SIGN #> TYPE SPACE ;
-: U.R  ( u w -- ) >R           0 ( ud ) <# #S          R> #pad #> TYPE ;
-: .R   ( n w -- ) >R DUP ABS S>D (  d ) <# #S ROT SIGN R> #pad #> TYPE ;
+
+: U.   (   u -- )              0 <# #S                  #> TYPE SPACE ;
+: .    (   u -- )    DUP ABS S>D <# #S ROT SIGN         #> TYPE SPACE ;
+: U.R  ( u w -- ) >R           0 <# #S          R> #pad #> TYPE ;
+: .R   ( n w -- ) >R DUP ABS S>D <# #S ROT SIGN R> #pad #> TYPE ;
+: UD.  (  ud -- )                <# #S                  #> TYPE SPACE ;
+: D.   (   d -- )    DUP >R DABS <# #S  R> SIGN         #> TYPE SPACE ;
+: D.R  ( d n -- ) >R DUP >R DABS <# #S 2R> SIGN    #pad #> TYPE SPACE ;
+
+\ Hex with leading zeros
 : .X   (   u -- ) BASE @ SWAP HEX 0 <# 10 0 DO # LOOP #> TYPE SPACE BASE ! ;
 
 
@@ -870,7 +920,7 @@ VARIABLE #idx
 
 : number ( c-addr u1 -- u2 flag ) \ Parse unsigned number
     DUP 0= IF 2DROP 0 FALSE EXIT THEN
-    2>R 0 0 2R> >NUMBER ( ud c-addr u )
+    0 0 2SWAP >NUMBER ( ud c-addr u )
     0= >R ( ud c-addr ) 2DROP ( u ) R>
 ;
 
@@ -969,24 +1019,23 @@ VARIABLE #idx
 ;
 
 
+\ Not really from tools word set
 : MARKER HERE CREATE , DOES> @ FORGET-NAME ;
-
--ONE 1 RSHIFT CONSTANT MAX-N
 
 : ENVIRONMENT? ( c-addr u -- false | i*x true )
     2>R
-    2R@ S" /COUNTED-STRING"     s= IF 2rdrop FF          TRUE  EXIT THEN
-    2R@ S" /HOLD"               s= IF 2rdrop 100         TRUE  EXIT THEN
-    2R@ S" /PAD"                s= IF 2rdrop             FALSE EXIT THEN \ TODO About one page using dyn-alloc ?
-    2R@ S" ADDRESS-UNIT-BITS"   s= IF 2rdrop 8           TRUE  EXIT THEN
-    2R@ S" FLOORED"             s= IF 2rdrop FALSE       TRUE  EXIT THEN
-    2R@ S" MAX-CHAR"            s= IF 2rdrop FF          TRUE  EXIT THEN
-    2R@ S" MAX-D"               s= IF 2rdrop -ONE  MAX-N TRUE  EXIT THEN
-    2R@ S" MAX-N"               s= IF 2rdrop MAX-N       TRUE  EXIT THEN
-    2R@ S" MAX-U"               s= IF 2rdrop -ONE        TRUE  EXIT THEN
-    2R@ S" MAX-UD"              s= IF 2rdrop -ONE  -ONE  TRUE  EXIT THEN
-    2R@ S" RETURN-STACK-CELLS"  s= IF 2rdrop             FALSE EXIT THEN \ TODO sys_getrlim
-    2R@ S" STACK-CELLS"         s= IF 2rdrop 4000        TRUE  EXIT THEN
+    2R@ S" /COUNTED-STRING"     s= IF 2rdrop FF         TRUE  EXIT THEN
+    2R@ S" /HOLD"               s= IF 2rdrop 100        TRUE  EXIT THEN
+    2R@ S" /PAD"                s= IF 2rdrop            FALSE EXIT THEN \ TODO About one page using dyn-alloc ?
+    2R@ S" ADDRESS-UNIT-BITS"   s= IF 2rdrop 8          TRUE  EXIT THEN
+    2R@ S" FLOORED"             s= IF 2rdrop FALSE      TRUE  EXIT THEN
+    2R@ S" MAX-CHAR"            s= IF 2rdrop FF         TRUE  EXIT THEN
+    2R@ S" MAX-D"               s= IF 2rdrop MAX-D      TRUE  EXIT THEN
+    2R@ S" MAX-N"               s= IF 2rdrop MAX-N      TRUE  EXIT THEN
+    2R@ S" MAX-U"               s= IF 2rdrop MAX-U      TRUE  EXIT THEN
+    2R@ S" MAX-UD"              s= IF 2rdrop MAX-UD     TRUE  EXIT THEN
+    2R@ S" RETURN-STACK-CELLS"  s= IF 2rdrop            FALSE EXIT THEN \ TODO sys_getrlim
+    2R@ S" STACK-CELLS"         s= IF 2rdrop 4000       TRUE  EXIT THEN
     2rdrop FALSE
 ;
 
