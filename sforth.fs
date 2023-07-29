@@ -818,7 +818,7 @@ VARIABLE emit-buf
 7F CONSTANT #del
 
 : SPACE  (   -- ) BL EMIT ;
-: SPACES ( u -- ) 0 DO SPACE LOOP ;
+: SPACES ( u -- ) 0 ?DO SPACE LOOP ;
 : CR     (   -- ) #cr EMIT #lf EMIT ;
 : graph? ( char -- flag ) DUP 20 >= SWAP 7E <= AND ;
 
@@ -925,9 +925,9 @@ VARIABLE #idx
 : #pad (    n -- ) #sz #idx @ - - BEGIN DUP 0> WHILE BL HOLD 1- REPEAT DROP ;
 
 : U.   (    u -- )              0 <# #S                  #> TYPE SPACE ;
-: .    (    u -- )    DUP ABS S>D <# #S ROT SIGN         #> TYPE SPACE ;
+: .    (    u -- )    DUP ABS   0 <# #S ROT SIGN         #> TYPE SPACE ;
 : U.R  (  u w -- ) >R           0 <# #S          R> #pad #> TYPE ;
-: .R   (  n w -- ) >R DUP ABS S>D <# #S ROT SIGN R> #pad #> TYPE ;
+: .R   (  n w -- ) >R DUP ABS   0 <# #S ROT SIGN R> #pad #> TYPE ;
 : UD.  ( ud   -- )                <# #S                  #> TYPE SPACE ;
 : UD.R ( ud w -- ) >R             <# #S          R> #pad #> TYPE SPACE ;
 : D.   (    d -- )    DUP >R DABS <# #S  R> SIGN         #> TYPE SPACE ;
@@ -998,7 +998,7 @@ VARIABLE #idx
 ;
 
 : number ( c-addr u -- n flag ) \ Parse char literal or signed number with base
-    2DUP charlit DUP 0> IF TRUE ELSE DROP number THEN
+    2DUP charlit DUP 0> IF NIP NIP TRUE ELSE DROP number THEN
 ;
 
 
@@ -1176,11 +1176,13 @@ VARIABLE PROMPT
     FALSE STATE !
 
     BEGIN
-        CR
+        ECHO   @ IF CR THEN
         PROMPT @ IF STATE @ IF ." C " ELSE ." > " THEN THEN
         REFILL
+        PROMPT @ IF SPACE THEN
     WHILE
-        SPACE INTERPRET ." ok"
+        INTERPRET
+        PROMPT @ IF ." ok" THEN
     REPEAT
 
     ." Bye!" CR BYE
