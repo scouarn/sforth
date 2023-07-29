@@ -264,8 +264,6 @@
     48 C, 89 C, 55 C, 00 C,     \ movq  %rdx, (%rbp)        rem
 ] ;
 
-\ : FM/MOD ( u n -- rem quot ) ; \ TODO
-
 
 : M+     (   d1   n -- d2    ) S>D D+ ;
 : M-     (   d1   n -- d2    ) S>D D- ;
@@ -310,6 +308,7 @@
     49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
     49 C, D3 C, E8 C,       \ shl   %cl, %r8
 ] ;
+
 
 \ Unsigned double mixed multiplication
 \ Double times single -> double product
@@ -675,7 +674,7 @@
 ; IMMEDIATE
 
 
-\ Arithmetic/ Utility ==========================================================
+\ More Arithmetic ==============================================================
 
 \ TODO Redo in machine code (?)
 : ABS (    n1 -- u    ) DUP 0< IF NEGATE THEN ;
@@ -697,6 +696,20 @@
 : DABS (    d  -- ud    ) DUP 0< IF DNEGATE THEN ;
 : DMIN ( d1 d2 -- d1|d2 ) 2OVER 2OVER D> IF 2SWAP THEN 2DROP ;
 : DMAX ( d1 d2 -- d1|d2 ) 2OVER 2OVER D< IF 2SWAP THEN 2DROP ;
+
+\ Floored division
+\ https://www.nimblemachines.com/symmetric-division-considered-harmful/
+: FM/MOD ( d n -- rem quot )
+    DUP >R \ Save divisor
+    2DUP XOR 63 RSHIFT ( u n 0|1 ) >R \ 1 -> Signs differ ?
+    SM/REM ( rem quot ) ( R: n signs? )
+    OVER 0= R> 0= OR IF rdrop EXIT THEN \ rem = 0 or same signs -> No adjust
+    1- \ Adjust quotient
+    SWAP R> + SWAP \ Adjust remainder
+;
+
+
+\ More memory operations =======================================================
 
 : CMOVE ( c-addr1 c-addr2 u -- ) [
     4C C, 89 C, C1 C,       \ mov   %r8, %rcx
@@ -879,16 +892,17 @@ VARIABLE #idx
     BEGIN # 2DUP D0= UNTIL
 ;
 
-: SIGN (   n -- ) 0< IF [CHAR] - HOLD THEN ;
-: #pad (   n -- ) #sz #idx @ - - BEGIN DUP 0> WHILE BL HOLD 1- REPEAT ;
+: SIGN (    n -- ) 0< IF [CHAR] - HOLD THEN ;
+: #pad (    n -- ) #sz #idx @ - - BEGIN DUP 0> WHILE BL HOLD 1- REPEAT DROP ;
 
-: U.   (   u -- )              0 <# #S                  #> TYPE SPACE ;
-: .    (   u -- )    DUP ABS S>D <# #S ROT SIGN         #> TYPE SPACE ;
-: U.R  ( u w -- ) >R           0 <# #S          R> #pad #> TYPE ;
-: .R   ( n w -- ) >R DUP ABS S>D <# #S ROT SIGN R> #pad #> TYPE ;
-: UD.  (  ud -- )                <# #S                  #> TYPE SPACE ;
-: D.   (   d -- )    DUP >R DABS <# #S  R> SIGN         #> TYPE SPACE ;
-: D.R  ( d n -- ) >R DUP >R DABS <# #S 2R> SIGN    #pad #> TYPE SPACE ;
+: U.   (    u -- )              0 <# #S                  #> TYPE SPACE ;
+: .    (    u -- )    DUP ABS S>D <# #S ROT SIGN         #> TYPE SPACE ;
+: U.R  (  u w -- ) >R           0 <# #S          R> #pad #> TYPE ;
+: .R   (  n w -- ) >R DUP ABS S>D <# #S ROT SIGN R> #pad #> TYPE ;
+: UD.  ( ud   -- )                <# #S                  #> TYPE SPACE ;
+: UD.R ( ud w -- ) >R             <# #S          R> #pad #> TYPE SPACE ;
+: D.   (    d -- )    DUP >R DABS <# #S  R> SIGN         #> TYPE SPACE ;
+: D.R  (  d w -- ) >R DUP >R DABS <# #S 2R> SIGN    #pad #> TYPE SPACE ;
 
 \ Hex with leading zeros
 : .X   (   u -- ) BASE @ SWAP HEX 0 <# 10 0 DO # LOOP #> TYPE SPACE BASE ! ;
