@@ -97,7 +97,7 @@
 
 : 2R@ ( -- x1 x2 )   ( R: x1 x2 -- x1 x2 )
     48 C, 8D C, 6D C, F0 C,       \ lea   -16(%rbp), %rbp
-    4C C, 89 C, 45 C, 00 C,       \ mov   %r8, 8(%rbp)
+    4C C, 89 C, 45 C, 08 C,       \ mov   %r8, 8(%rbp)
     4C C, 8B C, 44 C, 24 C, 08 C, \ mov   8(%rsp), %r8
     4C C, 89 C, 45 C, 00 C,       \ mov   %r8, (%rbp)
     4C C, 8B C, 04 C, 24 C,       \ mov   (%rsp), %r8
@@ -511,7 +511,7 @@
 : DO  ( C: -- leave-orig dest ) ( lim idx -- ) ( R: -- leave lim idx )
     \ Reserve a cell for the leave address
     \ TODO Kinda hacky, similar to S" -> better solution for this kind of storage?
-    POSTPONE AHEAD HERE >R 99 , POSTPONE THEN
+    POSTPONE AHEAD HERE >R 0 , POSTPONE THEN
 
     \ At execution, push the value inside the cell, which was set by LOOP
     R@ ( leave-orig ) POSTPONE LITERAL POSTPONE @ ( leave ) POSTPONE >R
@@ -533,13 +533,41 @@
     R> HERE
 ; IMMEDIATE
 
-\ FIXME : If the loop index did not cross the boundary between the loop limit
-\ minus one and the loop limit, continue execution at the beginning of the loop.
+\ This seams to work but it's ugly
+: (+loop) ( n -- flag ) ( R: lim i1 ret -- lim i2 ret )
+    R> SWAP 2R@ SWAP ( ret n lim i1 )
+
+    SWAP - ( ret n i1-lim )
+    [ 1 3F LSHIFT ] LITERAL \ MIN-N
+    + ( ret n x )
+
+    OVER ( ret n x n )
+    [ ( n1 n2 -- 0|1 ) \ n1 + n2 overflowed?
+        4C C, 03 C, 45 C, 00 C, \ add    (%rbp), %r8
+        0F C, 90 C, C0 C,       \ seto   %al
+        4C C, 0F C, B6 C, C0 C, \ movzxb %al, %r8
+        sp+
+    ] ( ret n flag )
+    -ROT ( flag ret n )
+    R> ( flag ret n i1 )
+    + >R >R ( flag )
+;
+
+\ Other version using same computation as Gforth's (+loop)
+\ I have no idea how it works
+\ http://git.savannah.gnu.org/cgit/gforth.git/tree/prim
+: (+loop) ( n -- flag ) ( R: lim i1 ret -- lim i2 ret )
+    R> SWAP ( ret n )
+    DUP R@ + ( ret n i2   ) ( R: lim i1 ) \ i2 = i1 + n
+    R> R@  - ( ret n i2 x ) ( R: lim    ) \  x = i1 - lim
+    SWAP >R  ( ret n x    ) ( R: lim i2 )
+    SWAP OVER + ( ret x x+n )
+    XOR 0<   ( ret flag )       \ x ^ x+n
+    SWAP >R  ( flag ) ( R: lim i2 ret )
+;
+
 : +LOOP ( C: leave-orig dest -- ) ( n -- ) ( R: leave lim i1 -- | leave lim i2 )
-        POSTPONE R> POSTPONE + POSTPONE R> ( i2 lim )
-        POSTPONE 2DUP ( i2 lim i2 lim )
-        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
-        POSTPONE =              ( flag ) \ FIXME
+        POSTPONE (+loop)        ( flag ) ( R: lim i2 )
         branch0 resolve>        \ Resolve dest: 0branch to DO
         HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
         POSTPONE UNLOOP
@@ -637,6 +665,7 @@
 0 INVERT        CONSTANT TRUE
 0               CONSTANT FALSE
 -ONE 1 RSHIFT   CONSTANT MAX-N
+1 3F   LSHIFT   CONSTANT MIN-N
 -ONE            CONSTANT MAX-U
 -ONE MAX-N     2CONSTANT MAX-D
 -ONE -ONE      2CONSTANT MAX-UD
