@@ -533,51 +533,35 @@
     R> HERE
 ; IMMEDIATE
 
-\ This seams to work but it's ugly
-: (+loop) ( n -- flag ) ( R: lim i1 ret -- lim i2 ret )
-    R> SWAP 2R@ SWAP ( ret n lim i1 )
 
-    SWAP - ( ret n i1-lim )
-    [ 1 3F LSHIFT ] LITERAL \ MIN-N
-    + ( ret n x )
+\ Implementation of AntonErtl's comment
+\ https://forth-standard.org/standard/core/PlusLOOP
+: (loop-stop?) ( n -- flag ) ( R: lim i1 ret -- lim i1 ret )
+    R> 2R@ ( n ret lim i1 ) ROT >R
+    ( n lim i1 )
+    SWAP - ( n i-l )
+    [ 1 3F LSHIFT ] LITERAL ( n i-l ) \ MIN-N
+    + ( n x )
 
-    OVER ( ret n x n )
     [ ( n1 n2 -- 0|1 ) \ n1 + n2 overflowed?
         4C C, 03 C, 45 C, 00 C, \ add    (%rbp), %r8
         0F C, 90 C, C0 C,       \ seto   %al
         4C C, 0F C, B6 C, C0 C, \ movzxb %al, %r8
         sp+
-    ] ( ret n flag )
-    -ROT ( flag ret n )
-    R> ( flag ret n i1 )
-    + >R >R ( flag )
-;
-
-\ Other version using same computation as Gforth's (+loop)
-\ I have no idea how it works
-\ http://git.savannah.gnu.org/cgit/gforth.git/tree/prim
-: (+loop) ( n -- flag ) ( R: lim i1 ret -- lim i2 ret )
-    R> SWAP ( ret n )
-    DUP R@ + ( ret n i2   ) ( R: lim i1 ) \ i2 = i1 + n
-    R> R@  - ( ret n i2 x ) ( R: lim    ) \  x = i1 - lim
-    SWAP >R  ( ret n x    ) ( R: lim i2 )
-    SWAP OVER + ( ret x x+n )
-    XOR 0<   ( ret flag )       \ x ^ x+n
-    SWAP >R  ( flag ) ( R: lim i2 ret )
+    ]
 ;
 
 : +LOOP ( C: leave-orig dest -- ) ( n -- ) ( R: leave lim i1 -- | leave lim i2 )
-        POSTPONE (+loop)        ( flag ) ( R: lim i2 )
-        branch0 resolve>        \ Resolve dest: 0branch to DO
+        POSTPONE DUP POSTPONE (loop-stop?) POSTPONE SWAP ( n flag ) \ Exit cond
+        POSTPONE R> POSTPONE + POSTPONE >R ( flag ) ( R: lim i2 ) \ Increment
+        branch0 resolve> \ Resolve dest: 0branch to DO
         HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
         POSTPONE UNLOOP
 ; IMMEDIATE
 
 : LOOP  ( C: leave-orig dest -- ) ( -- ) ( R: leave lim i1 -- | lim i2 )
-        POSTPONE R> POSTPONE 1+ POSTPONE R> ( i2 lim )
-        POSTPONE 2DUP ( i2 lim i2 lim )
-        POSTPONE >R POSTPONE >R ( i2 lim ) ( R: lim i2 )
-        POSTPONE =              ( flag )
+        POSTPONE R> POSTPONE 1+ POSTPONE >R ( R: lim i2 )
+        POSTPONE 2R@ POSTPONE = ( flag )
         branch0 resolve>        \ Resolve dest: 0branch to DO
         HERE SWAP ( here leave-orig ) ! \ Resolve leave-orig
         POSTPONE UNLOOP

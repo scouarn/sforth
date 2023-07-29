@@ -852,6 +852,8 @@ VARIABLE gdincrement
    +LOOP gditerations @
 ;
 
+DECIMAL
+
 T{    4  4  -1 gd7 ->  4                  1  }T
 T{    1  4  -1 gd7 ->  4  3  2  1         4  }T
 T{    4  1  -1 gd7 ->  1  0 -1 -2  -3  -4 6  }T
@@ -917,6 +919,7 @@ T{ 1 GD6 -> 1 }T
 T{ 2 GD6 -> 3 }T
 T{ 3 GD6 -> 4 1 2 }T
 
+HEX
 
 \ F.3.16 Defining Words
 
