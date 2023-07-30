@@ -993,6 +993,60 @@ VARIABLE #idx
     2DUP charlit DUP 0> IF NIP NIP TRUE ELSE DROP number THEN
 ;
 
+\ Escaped string ===============================================================
+
+: esc-hex, ( c-addr1 u1 -- c-addr1 u1 ) \ Compile hex code
+    DUP 2 U< IF EXIT THEN \ Ignore if not enough to parse
+    BASE @ >R HEX
+    0 0 3 PICK 2 >NUMBER 2DROP ( c-addr1 u1 ud )
+    DROP C, ( c-addr1 u1 )
+    R> BASE !
+;
+
+: esc-seq, ( c-addr1 u1 "ccc<quote>"* -- c-addr2 u2 )
+    \ * End of the string: it was an escaped quote -> Reparse
+    DUP 0= IF 2DROP [CHAR] " C, [CHAR] " PARSE EXIT THEN
+    OVER C@ CASE
+        [CHAR] a OF #bel C,         ENDOF
+        [CHAR] b OF #bs  C,         ENDOF
+        [CHAR] e OF #esc C,         ENDOF
+        [CHAR] f OF #ff  C,         ENDOF
+        [CHAR] l OF #lf  C,         ENDOF
+        [CHAR] r OF #cr  C,         ENDOF
+        [CHAR] t OF #ht  C,         ENDOF
+        [CHAR] v OF #vt  C,         ENDOF
+        [CHAR] z OF #nul C,         ENDOF
+        [CHAR] m OF #cr  C, #lf C,  ENDOF
+        [CHAR] n OF #cr  C, #lf C,  ENDOF
+        [CHAR] \ OF [CHAR] \ C,     ENDOF
+        [CHAR] q OF [CHAR] " C,     ENDOF
+        [CHAR] x OF 1 /STRING esc-hex, 1 /STRING ENDOF
+        ( default ) \ Ignore
+    ENDCASE 1 /STRING
+;
+
+: esc-str, ( "ccc<quote>" -- ) \ Parse and compile escaped string
+    [CHAR] " PARSE ( c-addr u )
+    BEGIN DUP 0> WHILE
+        OVER C@ \ There is at least one char
+        DUP [CHAR] \ = IF
+            DROP 1 /STRING esc-seq,
+        ELSE
+            C, 1 /STRING
+        THEN
+    REPEAT
+    2DROP
+;
+
+: S\" ( C: "ccc<quote>" -- ) ( -- c-addr u )
+    POSTPONE AHEAD
+        HERE >R esc-str, HERE >R ( R: start-addr end-addr )
+    POSTPONE THEN
+    2R> ( start-addr end-addr )
+    OVER - CHARS ( start-addr u )
+    POSTPONE 2LITERAL
+; IMMEDIATE
+
 
 \ Tools ========================================================================
 
@@ -1240,53 +1294,3 @@ VARIABLE PROMPT
 ;
 
 RESET
-
-
-\ TODO Read that http://www.forth200x.org/escaped-strings.html
-\ : S\" ( C: "ccc<quote>" -- ) ( -- c-addr u )
-
-
-\ Let's try a simpler problem first : print escaped in interpreter
-\ Then we replace EMIT by C, and keep track of total length
-\ -> by comparing HERE before and after ?
-\ TODO \x00 notation ?
-
-: esc-seq ( c-addr1 u1 -- c-addr2 u2 )
-    OVER C@ CASE
-        [CHAR] a OF #bel EMIT ENDOF
-        [CHAR] b OF #bs  EMIT ENDOF
-        [CHAR] e OF #esc EMIT ENDOF
-        [CHAR] f OF #ff  EMIT ENDOF
-        [CHAR] l OF #lf  EMIT ENDOF
-        [CHAR] m OF #cr  EMIT #lf EMIT ENDOF
-        [CHAR] n OF #cr  EMIT #lf EMIT ENDOF
-        [CHAR] q OF [CHAR] " EMIT ENDOF
-        [CHAR] r OF #cr  EMIT ENDOF
-        [CHAR] t OF #ht  EMIT ENDOF
-        [CHAR] v OF #vt  EMIT ENDOF
-        [CHAR] z OF #nul EMIT ENDOF
-        [CHAR] " OF [CHAR] " EMIT 2DROP [CHAR] " PARSE ENDOF \ Parse more
-        [CHAR] x OF [CHAR] X ENDOF \ TODO
-        [CHAR] \ OF [CHAR] \ EMIT ENDOF
-        ( default ) \ Ignore
-    ENDCASE
-;
-
-: .\( ( "ccc<quote>" -- )
-    [CHAR] " PARSE ( c-addr u )
-
-    BEGIN DUP WHILE
-        OVER C@
-        DUP [CHAR] \ = IF
-            DROP 1 /STRING esc-seq
-        ELSE
-            EMIT
-        THEN
-        1 /STRING
-    REPEAT
-    2DROP
-;
-
-
-HEX CR .\( B\qlabla"
-
