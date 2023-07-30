@@ -1,8 +1,6 @@
-CC = gcc
-CFLAGS = -g -nostdlib -static
-
 sforth: sforth.S
-	$(CC) $(CFLAGS) -o $@ $<
+	as -o sforth.o $< && ld a.out -o $@
+	rm sforth.o
 
 test: sforth
 	@./test.sh

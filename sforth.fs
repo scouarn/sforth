@@ -1282,7 +1282,7 @@ VARIABLE PROMPT
     ." Welcome to Scouarn Forth"
     CR ." used: "
     HERE CP0 - . ." total, "
-    CP1  CP0 - . ." kernel, "
+    CP1  CP0 - . ." bootstrap, "
     HERE CP1 - . ." user "
     UNUSED CR ." free: " . CR
 

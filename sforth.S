@@ -11,9 +11,11 @@
 .equ FLAG_IMM,          0x01
 .equ FLAG_HIDDEN,       0x02
 
-#include <asm/unistd.h>
-#define STDIN  0
-#define STDOUT 1
+.equ STDIN,  0
+.equ STDOUT, 1
+.equ __NR_read,  0
+.equ __NR_write, 1
+.equ __NR_exit,  60
 
 
 ## Stacks
@@ -36,15 +38,14 @@ dstack_start:
 
 
 ## Entrypoint
-
         .text
         .globl _start
 _start:
         cld
         xorq    %r8, %r8
-        movq    $dstack_start, %rbp        # Data stack
-        movq    %rsp, rstack_init          # Return stack
-        jmp     xt_QUIT                    # No return
+        movq    $dstack_start, %rbp     # Data stack
+        movq    %rsp, rstack_init       # Return stack
+        jmp     _QUIT                   # No return
 
 
 ## Dictionary
@@ -345,7 +346,7 @@ DEFINE_WORD BYE, "BYE"
         movq    $0, %rdi
         syscall
 
-DEFINE_WORD QUIT, "(quit)"
+_QUIT:
         movq    rstack_init, %rsp       # Empty the return stack
         movq    $0, state               # Interpreter mode
 .Lquit_loop:
