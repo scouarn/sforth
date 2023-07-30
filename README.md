@@ -8,7 +8,7 @@ there are a lot of things I'm not satisfied with (See [TODO](#todo)).
 Scouarn Forth is a Forth-2012 System :
 - Providing the Core Extensions word set
 - Providing the Programming-Tools word set
-- Providing `AHEAD` `BYE` `CS-PICK` `CS-ROLL` `FORGET` `NAME\>STRING` `[DEFINED]` `[UNDEFINED]` from the Programming-Tools Extensions word set
+- Providing `AHEAD` `BYE` `CS-PICK` `CS-ROLL` `FORGET` `NAME>STRING` `[DEFINED]` `[UNDEFINED]` from the Programming-Tools Extensions word set
 
 Most of the Double word set is also implemented but `M*/`, `2VALUE` and the
 `123.` notation are missing.
