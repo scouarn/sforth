@@ -138,6 +138,68 @@ the locations of the sections.
 
 
 ### Ambiguous conditions
+- name is neither a valid definition name nor a valid number during text interpretation: `**NOT FOUND** <word>` is written and the interpreter aborts
+- a definition name exceeded the maximum length allowed: the size will be mod 256 but the entire name will be written to the definition, this is not a
+    problem using user input since the TIB size is the same as the max length
+- addressing a region not listed in 3.3.3 Data space: the system crashes with `Segmentation fault`
+
+- ? argument type incompatible with specified input parameter, e.g., passing a flag to a word expecting an n (3.1 Data types):
+- ? attempting to obtain the execution token, (e.g., with 6.1.0070 ', 6.1.1550 FIND, etc.) of a definition with undefined interpretation semantics:
+
+- dividing by zero (6.1.0100 \*/, 6.1.0110 \*/MOD, 6.1.0230 /, 6.1.0240 /MOD, 6.1.1561 FM/MOD, 6.1.1890 MOD, 6.1.2214 SM/REM, 6.1.2370 UM/MOD, 8.6.1.1820 M\*/):
+    the system crashes with `Floating point exception`
+- insufficient data-stack space or return-stack space (stack overflow): segmentation fault
+- insufficient space for loop-control parameters: segmentation fault
+- insufficient space in the dictionary: segmentation fault
+
+- interpreting a word with undefined interpretation semantics:
+    - ?
+
+- modifying the contents of the input buffer or a string literal (3.3.3.4 Text-literal regions, 3.3.3.5 Input buffers):
+    - addresses of string literal point inside the definition they are compiled into, their contents can be changed but not their length, the definition will be executed with the new contents
+    - ? input buffer
+
+- overflow of a pictured numeric output string: corruption of the buffer used by WORD
+
+- parsed string overflow:
+    - Using WORD: corruption of the pictured numeric output
+    - ? Using PARSE and PARSE-NAME
+
+- producing a result out of range, e.g., multiplication (using \*) results in a value too big to be represented by a single-cell integer (6.1.0090 \*, 6.1.0100 \*/, 6.1.0110 \*/MOD, 6.1.0570 \>NUMBER, 6.1.1561 FM/MOD, 6.1.2214 SM/REM, 6.1.2370 UM/MOD, 8.6.1.1820 M\*/):
+    - during a division: system crash with Floating Point Exception
+    - during a multiplication: most significant cell ignored
+- reading from an empty data stack or return stack (stack underflow): segmentation fault (a lot has to be popped until segfault)
+- unexpected end of input buffer, resulting in an attempt to use a zero-length string as a name:
+    - `:` will create a definition with an empty name
+    - Will likely find a name defined by :NONAME
+    - ? other conditions ?
+- ? \>IN greater than size of input buffer (3.4.1 Parsing);
+- ? 6.1.2120 RECURSE appears after 6.1.1250 DOES>;
+- ? argument input source different than current input source for 6.2.2148 RESTORE-INPUT:
+- ? data space containing definitions is de-allocated (3.3.3.2 Contiguous regions);
+- data space read/write with incorrect alignment (3.3.3.1 Address alignment): no alignment required
+- data-space pointer not properly aligned (6.1.0150 ,, 6.1.0860 C,): no alignment required
+- ? less than u+2 stack items (6.2.2030 PICK, 6.2.2150 ROLL);
+- ? loop-control parameters not available (6.1.0140 +LOOP, 6.1.1680 I, 6.1.1730 J, 6.1.1760 LEAVE, 6.1.1800 LOOP, 6.1.2380 UNLOOP);
+- ? most recent definition does not have a name (6.1.1710 IMMEDIATE);
+- ? 6.2.2295 TO not followed directly by a name defined by a word with "TO name runtime" semantics (6.2.2405 VALUE and 13.6.1.0086 (LOCAL));
+- name not found 6.1.0070 ', 6.1.2033 POSTPONE, 6.1.2510 ['], 6.2.2530 [COMPILE]):
+    - `'` and `[']` will return 0
+    - `POSTPONE` and `[COMPILE]` will segfault
+- parameters are not of the same type 6.1.1240 DO, 6.2.0620 ?DO, 6.2.2440 WITHIN): impossible to detect, parameters are treated as they were the same type
+- ? 6.1.2033 POSTPONE, 6.2.2530 [COMPILE], 6.1.0070 ' or 6.1.2510 ['] applied to 6.2.2295 TO;
+- ? string longer than a counted string returned by 6.1.2450 WORD;
+- ? u greater than or equal to the number of bits in a cell (6.1.1805 LSHIFT, 6.1.2162 RSHIFT);
+- ? word not defined via 6.1.1000 CREATE (6.1.0550 \>BODY, 6.1.1250 DOES>);
+- ? words improperly used outside 6.1.0490 <# and 6.1.0040 #> (6.1.0030 #, 6.1.0050 #S, 6.1.1670 HOLD, 6.2.1675 HOLDS, 6.1.2210 SIGN)
+- access to a deferred word, a word defined by 6.2.1173 DEFER, which has yet to be assigned to an xt: segmentation fault (call to address 0)
+- access to a deferred word, a word defined by 6.2.1173 DEFER, which was not defined by 6.2.1173 DEFER: call to whatever is there, likely segmentation fault
+- ? 6.1.2033 POSTPONE, 6.2.2530 [COMPILE], 6.1.2510 ['] or 6.1.0070 ' applied to 6.2.0698 ACTION-OF or 6.2.1725 IS;
+- \\x is not followed by two hexadecimal characters (6.2.2266 S\\"):
+    - if there is no character after \\x, it is ignored
+    - if there is only one character after \\x, it is ignored and the remaining character is still processed
+    - else exactly 2 characters are consumed and the number is the result of \>NUMBER using base 16 (stop converting at the first non hex character: \\x5W will return 5 and \\xW5 will return 0)
+- a \\ is placed before any character, other than those defined in 6.2.2266 S\\": the slash and the character are ignored
 
 
 ### Other system documentation
@@ -152,14 +214,16 @@ the locations of the sections.
 
 
 ## TODO
+- Words that parse (POSTPONE, TO, ...): issue a `**NOT FOUND**` abort
+- `cat` waits for a last input to figure out the pipe is closed
 - Test words longer than 128 bytes to check there's no unsigned vs signed byte bug
-- Handle SIGINT
+- Handle SIGINT, FPE
 - Set the tty in raw mode in code
 - Tests for Double and Tools
 - Remaining from Double set : `2VALUE` (ext),  `M*/` and `123.` notation
 - Self hosting: export dict as ELF (with a given entrypoint) and get rid of as/ld dep
 - Remove lower case duplicates like `find` -> Case insensitivity option and use `(word)` for system words
-- `QUIT`: check for stack underflow
+- underflow: check in QUIT or catch with segfault
 - (Using argv?) `QUIT`: echo / prompt / error reporting when inputting from `cat file.fs - `, greet message
 - Dyn alloc with mmap when `ALLOT` which becomes a primitive called by `,` and `C,`
 - Documentation
