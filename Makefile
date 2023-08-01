@@ -1,5 +1,5 @@
 sforth: sforth.S
-	as -o sforth.o $< && ld a.out -o $@
+	as -o sforth.o $< && ld sforth.o -o $@
 	rm sforth.o
 
 test: sforth
@@ -9,4 +9,4 @@ run: sforth
 	@./run.sh
 
 clean:
-	rm -f sforth
+	rm -f sforth sforth.o

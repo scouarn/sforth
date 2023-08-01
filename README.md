@@ -83,9 +83,58 @@ the locations of the sections.
 
 ## System documentation
 
-> TODO
-
 ### Implementation-defined options
+- Aligned address requirements: none
+- Behavior of EMIT for non-graphic characters: like all characters,
+    sent to the OS to be displayed by the terminal
+- Character editing of ACCEPT:
+    - return: send
+    - backspace: delete
+    - C^D: return -1 if nothing was written, else treat like return
+    - C^C: cancel and return 0 (only if isig is disabled, otherwise it will interrupt the process)
+- Character set (EMIT, KEY): ASCII
+- Character-aligned address requirements: none
+- Character-set-extensions matching characteristics: none
+- Conditions under which control characters match a space delimiter: never
+- Format of the control-flow stack: data stack
+- Conversion of digits larger than thirty-five: won't be recognized as digits
+- Display after input terminates ACCEPT: the line terminator is not echoed, nothing is written, the echoed text remains as is
+- Exception abort sequence (ABORT"): type the message, CR and ABORT
+- Input line terminator: either carriage return (C^M, return key) or line feed (C^J, keypad enter)
+- Maximum size of a counted string, in characters: 255
+- Maximum size of a parsed string: there is no hard limit, PARSE can
+    potentially parse the entire input source but a line from user input is
+    limited to 256 characters
+- Maximum size of a definition name, in characters: 256
+- Maximum string length for ENVIRONMENT?, in characters: no limit
+- Method of selecting User input device: fixed to stdin
+- Method of selecting User output device: fixed to stdout
+- Methods of dictionary compilation: a dictionary entry is a word header
+    followed directly by machine code, an execution token points to the address
+    of the machine code block. The header contains the address of the previous
+    entry, a flag byte, a length byte and characters of the name without padding
+- Number of bits in one address unit: 8
+- Number representation and arithmetic: 64bit 2's complement little endian
+- Ranges for n, +n, u, d, +d, and ud:
+    -  n: -2^63 -> 2^63-1
+    - +n: 0 -> 2^63-1
+    -  u: 0 -> 2^64-1
+    -  d: -2^127 -> 2^127-1
+    - +d: 0 -> 2^127-1
+    - ud: 0 -> 2^128-1
+- Read-only data-space regions: none
+- Size of buffer at WORD: 256 characters
+- Size of one cell in address units: 8
+- Size of one character in address units: 1
+- Size of the keyboard terminal input buffer: 256 characters
+- Size of the pictured numeric output string buffer: 256 characters
+- Size of the scratch area whose address is returned by PAD: indeterminate, from HERE+512 to the end of the allocated dictionary space (UNUSED-512), a minimum size will be guarantied when dynamic allocated is implemented
+- System case-sensitivity characteristics: case sensitive
+- System prompt: when user input is accepted, a space is emitted just after the echoed input and it is interpreted. `ok` is then written followed by `> ` (or `C ` in compilation mode) on a new line to indicate the system is ready to accept more input.
+- Type of division rounding: symmetric by default
+- Values of STATE when true: all 1 bits (as in TRUE)
+- Values returned after arithmetic overflow: the 'incorrect' result is kept
+- Whether the current definition can be found after DOES>: no
 
 
 ### Ambiguous conditions
@@ -103,7 +152,9 @@ the locations of the sections.
 
 
 ## TODO
-- Set the tty in raw mode by 
+- Test words longer than 128 bytes to check there's no unsigned vs signed byte bug
+- Handle SIGINT
+- Set the tty in raw mode in code
 - Tests for Double and Tools
 - Remaining from Double set : `2VALUE` (ext),  `M*/` and `123.` notation
 - Self hosting: export dict as ELF (with a given entrypoint) and get rid of as/ld dep

@@ -37,17 +37,6 @@ dstack_start:
 .endm
 
 
-## Entrypoint
-        .text
-        .globl _start
-_start:
-        cld
-        xorq    %r8, %r8
-        movq    $dstack_start, %rbp     # Data stack
-        movq    %rsp, rstack_init       # Return stack
-        jmp     _QUIT                   # No return
-
-
 ## Dictionary
 
 .equ _LAST_DEF, 0
@@ -73,6 +62,16 @@ DEFINE_WORD \label, \name, \flags
 
         .section .dictionary, "awx", @progbits
 dict_start:
+
+
+## Entrypoint
+        .globl _start
+_start:
+        cld
+        xorq    %r8, %r8
+        movq    $dstack_start, %rbp     # Data stack
+        movq    %rsp, rstack_init       # Return stack
+        jmp     _QUIT                   # No return
 
 
 ## Consts and variables

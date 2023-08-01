@@ -430,7 +430,7 @@
 : HERE   (   -- addr ) CP @ ;
 : ALLOT  ( n --      ) CP +! ;
 : ALIGN  (   --      ) CP @ ALIGNED CP ! ;
-: PAD    (   -- addr ) HERE 100 + ;
+: PAD    (   -- addr ) HERE 200 + ;
 : UNUSED (   -- u    ) brk @ HERE - ;
 
 
@@ -812,10 +812,11 @@ VARIABLE emit-buf
 : CR     (   -- ) #cr EMIT #lf EMIT ;
 : graph? ( char -- flag ) DUP 20 >= SWAP 7E <= AND ;
 
-
 : COUNT   ( c-addr1   -- c-addr2 u ) DUP CHAR+ SWAP C@ ;
 
-100 BUFFER: counted-buf \ 1 + 255 (minimal length in the standard)
+
+\ 100 BUFFER: counted-buf \ 1 + 255 (minimal length in the standard)
+: counted-buf HERE ;
 
 : counted ( c-addr1 u -- c-addr2 ) \ String to counted-string (transient region)
     FF MIN \ Limit size to 255
@@ -825,6 +826,7 @@ VARIABLE emit-buf
 ;
 
 : WORD ( char "<chars>ccc<char>" -- c-addr ) DUP scan-while PARSE counted ;
+
 
 : CHAR   ( "<spaces>name" -- char )           PARSE-NAME DROP C@ ;
 : [CHAR] ( C: "<spaces>name" -- ) ( -- char ) CHAR POSTPONE LITERAL ; IMMEDIATE
@@ -878,7 +880,8 @@ VARIABLE BASE
 HEX
 
 100 CONSTANT #sz
-#sz BUFFER: #buf
+\ #sz BUFFER: #buf
+: #buf HERE 100 + ;
 VARIABLE #idx
 
 : <# ( -- ) #sz #idx ! ;
