@@ -83,23 +83,25 @@ the locations of the sections.
 
 ## System documentation
 
+> Not complete
+
 ### Implementation-defined options
 - Aligned address requirements: none
-- Behavior of EMIT for non-graphic characters: like all characters,
+- Behavior of `EMIT` for non-graphic characters: like all characters,
     sent to the OS to be displayed by the terminal
-- Character editing of ACCEPT:
+- Character editing of `ACCEPT`:
     - return: send
     - backspace: delete
     - C^D: return -1 if nothing was written, else treat like return
     - C^C: cancel and return 0 (only if isig is disabled, otherwise it will interrupt the process)
-- Character set (EMIT, KEY): ASCII
+- Character set (`EMIT`, `KEY`): ASCII
 - Character-aligned address requirements: none
 - Character-set-extensions matching characteristics: none
 - Conditions under which control characters match a space delimiter: never
 - Format of the control-flow stack: data stack
 - Conversion of digits larger than thirty-five: won't be recognized as digits
-- Display after input terminates ACCEPT: the line terminator is not echoed, nothing is written, the echoed text remains as is
-- Exception abort sequence (ABORT"): type the message, CR and ABORT
+- Display after input terminates `ACCEPT`: the line terminator is not echoed, nothing is written, the echoed text remains as is
+- Exception abort sequence (`ABORT"`): type the message, `CR` and `ABORT`
 - Input line terminator: either carriage return (C^M, return key) or line feed (C^J, keypad enter)
 - Maximum size of a counted string, in characters: 255
 - Maximum size of a parsed string: there is no hard limit, PARSE can
@@ -123,86 +125,85 @@ the locations of the sections.
     - +d: 0 -> 2^127-1
     - ud: 0 -> 2^128-1
 - Read-only data-space regions: none
-- Size of buffer at WORD: 256 characters
+- Size of buffer at `WORD`: 256 characters
 - Size of one cell in address units: 8
 - Size of one character in address units: 1
 - Size of the keyboard terminal input buffer: 256 characters
 - Size of the pictured numeric output string buffer: 256 characters
-- Size of the scratch area whose address is returned by PAD: indeterminate, from HERE+512 to the end of the allocated dictionary space (UNUSED-512), a minimum size will be guarantied when dynamic allocated is implemented
+- Size of the scratch area whose address is returned by `PAD`: indeterminate, from `HERE`+512 to the end of the allocated dictionary space (`UNUSED`-512), a minimum size will be guarantied when dynamic allocated is implemented
 - System case-sensitivity characteristics: case sensitive
 - System prompt: when user input is accepted, a space is emitted just after the echoed input and it is interpreted. `ok` is then written followed by `> ` (or `C ` in compilation mode) on a new line to indicate the system is ready to accept more input.
 - Type of division rounding: symmetric by default
-- Values of STATE when true: all 1 bits (as in TRUE)
+- Values of `STATE` when true: all 1 bits (as in `TRUE`)
 - Values returned after arithmetic overflow: the 'incorrect' result is kept
-- Whether the current definition can be found after DOES>: no
+- Whether the current definition can be found after `DOES>`: no
 
 
 ### Ambiguous conditions
-- name is neither a valid definition name nor a valid number during text interpretation: `**NOT FOUND** <word>` is written and the interpreter aborts
-- a definition name exceeded the maximum length allowed: the size will be mod 256 but the entire name will be written to the definition, this is not a
+- Name is neither a valid definition name nor a valid number during text interpretation: `**NOT FOUND** <word>` is written and the interpreter aborts
+- A definition name exceeded the maximum length allowed: the size will be mod 256 but the entire name will be written to the definition, this is not a
     problem using user input since the TIB size is the same as the max length
-- addressing a region not listed in 3.3.3 Data space: the system crashes with `Segmentation fault`
+- Addressing a region not listed in 3.3.3 Data space: the system crashes with Segmentation fault
+- Argument type incompatible with specified input parameter, e.g., passing a flag to a word expecting an n (3.1 Data types): impossible to detect, the system assumes the types are correct, TRUE flag will be treated as -1 if a signed integer is expected
 
-- ? argument type incompatible with specified input parameter, e.g., passing a flag to a word expecting an n (3.1 Data types):
-- ? attempting to obtain the execution token, (e.g., with 6.1.0070 ', 6.1.1550 FIND, etc.) of a definition with undefined interpretation semantics:
+- ? Attempting to obtain the execution token, (e.g., with `'`, `FIND`, etc.) of a definition with undefined interpretation semantics:
 
-- dividing by zero (6.1.0100 \*/, 6.1.0110 \*/MOD, 6.1.0230 /, 6.1.0240 /MOD, 6.1.1561 FM/MOD, 6.1.1890 MOD, 6.1.2214 SM/REM, 6.1.2370 UM/MOD, 8.6.1.1820 M\*/):
-    the system crashes with `Floating point exception`
-- insufficient data-stack space or return-stack space (stack overflow): segmentation fault
-- insufficient space for loop-control parameters: segmentation fault
-- insufficient space in the dictionary: segmentation fault
+- Dividing by zero (`*/`, `*/MOD`, `/`, `/MOD`, `FM/MOD`, `MOD`, `SM/REM`, `UM/MOD`, `M*/`):
+    the system crashes with Floating point exception
+- Insufficient data-stack space or return-stack space (stack overflow): segmentation fault
+- Insufficient space for loop-control parameters: segmentation fault
+- Insufficient space in the dictionary: segmentation fault
 
-- interpreting a word with undefined interpretation semantics:
-    - ?
+- ? interpreting a word with undefined interpretation semantics: if the word is implemented as IMMEDIATE its compilation semantics will be executed, otherwise its execution semantics
 
-- modifying the contents of the input buffer or a string literal (3.3.3.4 Text-literal regions, 3.3.3.5 Input buffers):
+- Modifying the contents of the input buffer or a string literal (3.3.3.4 Text-literal regions, 3.3.3.5 Input buffers):
     - addresses of string literal point inside the definition they are compiled into, their contents can be changed but not their length, the definition will be executed with the new contents
     - ? input buffer
 
-- overflow of a pictured numeric output string: corruption of the buffer used by WORD
-
-- parsed string overflow:
+- Overflow of a pictured numeric output string: corruption of the buffer used by WORD
+- Parsed string overflow:
     - Using WORD: corruption of the pictured numeric output
-    - ? Using PARSE and PARSE-NAME
-
-- producing a result out of range, e.g., multiplication (using \*) results in a value too big to be represented by a single-cell integer (6.1.0090 \*, 6.1.0100 \*/, 6.1.0110 \*/MOD, 6.1.0570 \>NUMBER, 6.1.1561 FM/MOD, 6.1.2214 SM/REM, 6.1.2370 UM/MOD, 8.6.1.1820 M\*/):
+    - PARSE and PARSE-NAME: no overflow possible (?)
+- Producing a result out of range, e.g., multiplication (using `*`) results in a value too big to be represented by a single-cell integer (6.1.0090 \*, 6.1.0100 \*/, 6.1.0110 \*/MOD, 6.1.0570 \>NUMBER, 6.1.1561 FM/MOD, 6.1.2214 SM/REM, 6.1.2370 UM/MOD, 8.6.1.1820 M\*/):
     - during a division: system crash with Floating Point Exception
     - during a multiplication: most significant cell ignored
-- reading from an empty data stack or return stack (stack underflow): segmentation fault (a lot has to be popped until segfault)
-- unexpected end of input buffer, resulting in an attempt to use a zero-length string as a name:
-    - `:` will create a definition with an empty name
-    - Will likely find a name defined by :NONAME
-    - ? other conditions ?
-- ? \>IN greater than size of input buffer (3.4.1 Parsing);
-- ? 6.1.2120 RECURSE appears after 6.1.1250 DOES>;
-- ? argument input source different than current input source for 6.2.2148 RESTORE-INPUT:
-- ? data space containing definitions is de-allocated (3.3.3.2 Contiguous regions);
-- data space read/write with incorrect alignment (3.3.3.1 Address alignment): no alignment required
-- data-space pointer not properly aligned (6.1.0150 ,, 6.1.0860 C,): no alignment required
-- ? less than u+2 stack items (6.2.2030 PICK, 6.2.2150 ROLL);
-- ? loop-control parameters not available (6.1.0140 +LOOP, 6.1.1680 I, 6.1.1730 J, 6.1.1760 LEAVE, 6.1.1800 LOOP, 6.1.2380 UNLOOP);
-- ? most recent definition does not have a name (6.1.1710 IMMEDIATE);
-- ? 6.2.2295 TO not followed directly by a name defined by a word with "TO name runtime" semantics (6.2.2405 VALUE and 13.6.1.0086 (LOCAL));
-- name not found 6.1.0070 ', 6.1.2033 POSTPONE, 6.1.2510 ['], 6.2.2530 [COMPILE]):
+- Reading from an empty data stack or return stack (stack underflow): segmentation fault (a lot has to be popped until segfault)
+- Unexpected end of input buffer, resulting in an attempt to use a zero-length string as a name: will find the last word defined with :NONAME or will create a definition with an empty name
+- `>IN` greater than size of input buffer: empty parse area
+- `RECURSE` appears after `DOES>`: will call the last definition
+- Argument input source different than current input source for `RESTORE-INPUT`: will restore `>IN` with no checks
+- Data space containing definitions is de-allocated: no dynamic allocation and data space is in code space
+- Data space read/write with incorrect alignment (3.3.3.1 Address alignment): no alignment required
+- Data-space pointer not properly aligned (6.1.0150 ,, 6.1.0860 C,): no alignment required
+- Less than u+2 stack items (`PICK`, `ROLL`): Same as stack underflow
+- Loop-control parameters not available (`+LOOP`, `I`, `J`, `LEAVE`, `LOOP`, `UNLOOP`): will grab what is on the return stack and can lead to segfault if the return addresses are corrupted
+- Most recent definition does not have a name (`IMMEDIATE`): will set its IMM flag as if it had a name
+
+- ? `TO` not followed directly by a name defined by a word with "TO name runtime" semantics (`VALUE` and `(LOCAL)`):
+
+- Name not found (`'`, `POSTPONE`, `[']`, `[COMPILE]`):
     - `'` and `[']` will return 0
-    - `POSTPONE` and `[COMPILE]` will segfault
-- parameters are not of the same type 6.1.1240 DO, 6.2.0620 ?DO, 6.2.2440 WITHIN): impossible to detect, parameters are treated as they were the same type
-- ? 6.1.2033 POSTPONE, 6.2.2530 [COMPILE], 6.1.0070 ' or 6.1.2510 ['] applied to 6.2.2295 TO;
-- ? string longer than a counted string returned by 6.1.2450 WORD;
-- ? u greater than or equal to the number of bits in a cell (6.1.1805 LSHIFT, 6.1.2162 RSHIFT);
-- ? word not defined via 6.1.1000 CREATE (6.1.0550 \>BODY, 6.1.1250 DOES>);
-- ? words improperly used outside 6.1.0490 <# and 6.1.0040 #> (6.1.0030 #, 6.1.0050 #S, 6.1.1670 HOLD, 6.2.1675 HOLDS, 6.1.2210 SIGN)
-- access to a deferred word, a word defined by 6.2.1173 DEFER, which has yet to be assigned to an xt: segmentation fault (call to address 0)
-- access to a deferred word, a word defined by 6.2.1173 DEFER, which was not defined by 6.2.1173 DEFER: call to whatever is there, likely segmentation fault
-- ? 6.1.2033 POSTPONE, 6.2.2530 [COMPILE], 6.1.2510 ['] or 6.1.0070 ' applied to 6.2.0698 ACTION-OF or 6.2.1725 IS;
-- \\x is not followed by two hexadecimal characters (6.2.2266 S\\"):
-    - if there is no character after \\x, it is ignored
-    - if there is only one character after \\x, it is ignored and the remaining character is still processed
-    - else exactly 2 characters are consumed and the number is the result of \>NUMBER using base 16 (stop converting at the first non hex character: \\x5W will return 5 and \\xW5 will return 0)
-- a \\ is placed before any character, other than those defined in 6.2.2266 S\\": the slash and the character are ignored
+    - `POSTPONE` and `[COMPILE]` will segfault without any warning
+- Parameters are not of the same type (`DO`, `?DO`, `WITHIN`): impossible to detect, parameters are treated as they were the same type
 
+- ? `POSTPONE`, `[COMPILE]`, `'` or `[']` applied to `TO`:
 
-### Other system documentation
+- String longer than a counted string returned by `WORD`: string literals of any length are allowed as long as they fit in the parse area
+- u greater than or equal to the number of bits in a cell (`LSHIFT`, `RSHIFT`): shifted by u mod 64
+- Word not defined via `CREATE` (`>BODY`, `DOES>`):
+    - `>BODY` will return an address that points inside the machine code of the word, with no particular meaning
+    - `DOES>` will corrupt the machine code of the word
+- Words improperly used outside `<#` and `#>` (`#`, `#S`, `HOLD`, `HOLDS`, `SIGN`): will change the contents of the transient region and the index as they would
+- Access to a deferred word, a word defined by `DEFER`, which has yet to be assigned to an xt: segmentation fault (call to address 0)
+- Access to a deferred word, a word defined by `DEFER`, which was not defined by `DEFER`: call to whatever is there, likely segmentation fault
+
+- ? `POSTPONE`, `[COMPILE]`, `[']` or `'` applied to `ACTION-OF` or `IS`:
+
+- `\x` is not followed by two hexadecimal characters (`S\"`):
+    - if there is no character after `\x`, it is ignored
+    - if there is only one character after `\x`, it is ignored and the remaining character is still processed
+    - else exactly 2 characters are consumed and the number is the result of `>NUMBER` using base 16 (stop converting at the first non hex character: `\x5W` will return 5 and `\xW5` will return 0)
+- A \\ is placed before any character, other than those defined in `S\"`: the slash and the character are ignored
 
 
 ## References
@@ -223,7 +224,7 @@ the locations of the sections.
 - Remaining from Double set : `2VALUE` (ext),  `M*/` and `123.` notation
 - Self hosting: export dict as ELF (with a given entrypoint) and get rid of as/ld dep
 - Remove lower case duplicates like `find` -> Case insensitivity option and use `(word)` for system words
-- underflow: check in QUIT or catch with segfault
+- underflow and overflow: catch with segfault, special section scheme
 - (Using argv?) `QUIT`: echo / prompt / error reporting when inputting from `cat file.fs - `, greet message
 - Dyn alloc with mmap when `ALLOT` which becomes a primitive called by `,` and `C,`
 - Documentation

@@ -306,7 +306,7 @@
     48 C, 8B C, 4D C, 00 C, \ mov (%rbp), %rcx
     sp+
     49 C, 87 C, C8 C,       \ xchg  %rcx, %r8
-    49 C, D3 C, E8 C,       \ shl   %cl, %r8
+    49 C, D3 C, E8 C,       \ shr   %cl, %r8
 ] ;
 
 
