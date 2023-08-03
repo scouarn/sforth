@@ -44,6 +44,7 @@ Running files:
 ```console
 cat sforth.fs <file1> <file2> <file3> | ./sforth
 ```
+> NOTE: This is not well supported, code will be echoed with the prompts
 
 Running the test suite:
 ```console

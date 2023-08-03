@@ -176,6 +176,7 @@
 : CHARS (    n1 -- n2    ) ; \ Do nothing
 : CELLS (    n1 -- n2    ) [ 49 C, C1 C, E0 C, 03 C, ] ; \ shl  $3, %r8
 : CHAR+ ( addr1 -- addr2 ) [ 49 C, FF C, C0 C,       ] ; \ incq %r8
+: CHAR- ( addr1 -- addr2 ) [ 49 C, FF C, C8 C,       ] ; \ dec     %r8
 : CELL+ ( addr1 -- addr2 ) [ 49 C, 83 C, C0 C, 08 C, ] ; \ add  $8, %r8
 
 : 2@ (   addr -- d ) DUP CELL+ @ SWAP @ ;
